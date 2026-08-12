@@ -110,3 +110,14 @@ gh release create vX.Y.Z SourceNote-vX.Y.Z.zip --title "<name>" --notes-file <fi
 - Release 标题与仓库名一致（当前 `utools-unotes`）；tag 用 `v` + SemVer
 - git 身份：仓库级 `git config user.email`（当前 1902283142@qq.com）
 - 只改代码不涉及功能变更的推送（如 README/docs）不需要改版本号
+
+---
+
+## Workflow Conventions（工作方式约定，2026-08 复盘沉淀）
+
+SourceNote 绿地图开发（1 次规划 + 5 轮子代理 + 5 轮用户反馈修正）暴露的 4 条流程教训：
+
+1. **规划期对齐到「按钮级」**：涉及表单/交互的功能，规划时必须把交互流程逐项列给用户确认（点哪里 → 看到什么 → 下一步去哪）。只对齐布局图不够——本项目笔记表单（归属对象选择+正文编辑器）按 PRD 实现后，用户反馈"快速创建不需要这些"，需求漂移成本 = 整个 NoteForm + NoteView 重构。
+2. **主会话阶段验收**：每轮实现子代理返回后，主会话必须抽查关键组件的行为代码（不只跑测试）——本项目未抽查 NoteForm，流程偏差跨 3 轮才暴露。
+3. **渲染层验证进门禁**：涉及组件/布局/编辑器改动的任务必须跑 `npm run ui-smoke`（详见 Render-Layer Pitfalls 节）。白屏三连（TooltipProvider 缺失 / useShallow 引用不稳定 / 短路条件 Hook）全部由真实 DOM 验证才捕获。
+4. **uTools 内核 CSS 兼容**：现代 CSS（Tailwind 4 输出 oklch/lab/color-mix）在老内核上整段失效 → 线框。必须配置 Lightning CSS 降级（vite `css.transformer: 'lightningcss'` + `targets: { chrome: 88 }` + `build.cssMinify: false`）。详见 utools-dev skill「uTools 内核 CSS 兼容」节。
