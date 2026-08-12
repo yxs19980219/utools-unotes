@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Thinking guide: cross-layer data flow between stores, services and utools.db"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Thinking guide: reuse NoteCardList/NoteCard across all views, avoid duplicated list logic"}
+{"file": "C:/Users/Fengzhi/.agents/skills/utools-dev/SKILL.md", "reason": "uTools plugin development rules: plugin.json, preload CommonJS, utools.db red lines, dev/build dual mode"}
+{"file": "C:/Users/Fengzhi/.agents/skills/utools-dev/references/utools-api.md", "reason": "uTools API reference: setSubInput, db promises CRUD, onPluginEnter signatures"}

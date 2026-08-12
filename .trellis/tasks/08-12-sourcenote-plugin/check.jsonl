@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verification lens: data flow integrity across UI -> store -> services -> utools.db"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Check duplicated patterns: list rendering, tag normalization, card click handling"}
+{"file": "C:/Users/Fengzhi/.agents/skills/utools-dev/SKILL.md", "reason": "Compliance check: utools.db red lines, preload rules, build artifacts clean"}
+{"file": "C:/Users/Fengzhi/.agents/skills/utools-dev/references/utools-api.md", "reason": "Verify actual API usage matches documented signatures"}
