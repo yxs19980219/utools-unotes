@@ -271,7 +271,7 @@ function HomeSidebarGroups() {
   }
   return (
     <div
-      className={`grid min-h-0 flex-1 gap-2 ${pinnedTags.length > 0 ? 'grid-rows-2' : 'grid-rows-1'}`}
+      className={`grid min-h-0 flex-1 gap-2 ${pinnedTags.length > 0 ? 'grid-rows-[1fr_1.6fr]' : 'grid-rows-1'}`}
     >
       {/* 活跃对象：上半区（grid 两行严格对半分；内容多时行随内容撑开，外层 ScrollArea 滚动） */}
       <div className="flex min-w-0 flex-col gap-0.5">
