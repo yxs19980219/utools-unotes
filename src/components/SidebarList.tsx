@@ -270,43 +270,46 @@ function HomeSidebarGroups() {
     )
   }
   return (
-    <div className="flex flex-col gap-0.5">
-      {/* 活跃对象分组恒渲染（+ 按钮 = 新建对象入口；无对象但钉住标签时也可见） */}
-      <SectionLabel
-        action={
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label="新建对象"
-                title="新建对象"
-                onClick={() => startEditing('object', null)}
-              >
-                <PlusIcon data-icon />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">新建对象</TooltipContent>
-          </Tooltip>
-        }
-      >
-        活跃对象
-      </SectionLabel>
-      {sortedObjects.map((o) => {
-        const Icon = sourceTypeIcon(o.sourceType)
-        return (
-          <ObjectContextMenu key={o._id} object={o} mode="active">
-            <SidebarRow
-              icon={<Icon />}
-              label={o.title}
-              active={selectedObjectId === o._id}
-              onClick={() => selectObject(o._id)}
-            />
-          </ObjectContextMenu>
-        )
-      })}
+    <div className="flex min-h-0 flex-1 flex-col gap-0.5">
+      {/* 活跃对象：上半区（与钉住标签对半分；内容多时随外层 ScrollArea 整体滚动） */}
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 pb-2">
+        <SectionLabel
+          action={
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="新建对象"
+                  title="新建对象"
+                  onClick={() => startEditing('object', null)}
+                >
+                  <PlusIcon data-icon />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">新建对象</TooltipContent>
+            </Tooltip>
+          }
+        >
+          活跃对象
+        </SectionLabel>
+        {sortedObjects.map((o) => {
+          const Icon = sourceTypeIcon(o.sourceType)
+          return (
+            <ObjectContextMenu key={o._id} object={o} mode="active">
+              <SidebarRow
+                icon={<Icon />}
+                label={o.title}
+                active={selectedObjectId === o._id}
+                onClick={() => selectObject(o._id)}
+              />
+            </ObjectContextMenu>
+          )
+        })}
+      </div>
+      {/* 钉住标签：下半区（对半分；无钉住标签时不渲染） */}
       {pinnedTags.length > 0 && (
-        <>
+        <div className="flex min-h-0 flex-1 flex-col gap-0.5">
           <SectionLabel>钉住标签</SectionLabel>
           {pinnedTags.map((t) => (
             <TagSidebarRow
@@ -316,7 +319,7 @@ function HomeSidebarGroups() {
               onClick={() => selectTag(t._id)}
             />
           ))}
-        </>
+        </div>
       )}
     </div>
   )

@@ -58,8 +58,8 @@ export default function App() {
       <div className="flex h-screen min-w-0 overflow-hidden bg-background">
       {/* 左侧边栏（浅灰 bg-sidebar vs 内容区纯白，色阶区分无分割线） */}
       <aside className="flex w-44 shrink-0 flex-col bg-sidebar">
-        {/* 视图栏：与内容区顶栏 h-11 顶部平齐（R6） */}
-        <div className="flex h-11 shrink-0 items-center px-2">
+        {/* 视图栏：与内容区顶栏 h-11 顶部平齐（R6）；底部分隔线与内容区标题栏分隔线齐平 */}
+        <div className="flex h-11 shrink-0 items-center border-b border-border px-2">
           <ViewSwitcher />
         </div>
         <SidebarList />

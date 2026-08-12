@@ -86,7 +86,7 @@ function NoteCard({ note, object, tagById, sourceLabel, crossObject }: NoteCardP
       onKeyDown={(e) => {
         if (e.key === 'Enter') openNote(note._id)
       }}
-      className="group flex cursor-pointer flex-col gap-1 rounded-lg border border-border bg-card p-2.5 transition-colors hover:bg-accent/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="group flex cursor-pointer flex-col gap-1 rounded-lg border border-transparent bg-muted p-2.5 transition-colors hover:bg-accent hover:shadow-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:border-border dark:bg-card dark:hover:bg-accent/50 dark:hover:shadow-none"
     >
       {/* 标题行 + 悬停操作 */}
       <div className="flex items-center gap-2">

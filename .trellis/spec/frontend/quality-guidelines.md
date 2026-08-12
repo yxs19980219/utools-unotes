@@ -130,4 +130,5 @@ SourceNote 绿地图开发（1 次规划 + 5 轮子代理 + 5 轮用户反馈修
 3. **渲染层验证进门禁**：涉及组件/布局/编辑器改动的任务必须跑 `npm run ui-smoke`（详见 Render-Layer Pitfalls 节）。白屏三连（TooltipProvider 缺失 / useShallow 引用不稳定 / 短路条件 Hook）全部由真实 DOM 验证才捕获。
 4. **uTools 内核 CSS 兼容**：现代 CSS（Tailwind 4 输出 oklch/lab/color-mix）在老内核上整段失效 → 线框。必须配置 Lightning CSS 降级（vite `css.transformer: 'lightningcss'` + `targets: { chrome: 88 }` + `build.cssMinify: false`）。详见 utools-dev skill「uTools 内核 CSS 兼容」节。
 5. **需求选项空间给全**：brainstorm 给方案时，除推荐方案外必须列出「移除/按需/不显示」类选项——08-12 元数据展示只给了 A/B 两个常驻方案，用户第二轮推翻（"还是很丑"）改按需 ℹ 按钮，整个方案 B 作废。用户直觉常落在"少即是多"一侧。
-6. **大段 JSX 替换先 read 当前文件**：edit 的 oldText 必须与磁盘逐字节一致；import 段被前置修改后，按旧内容拼整段替换会失败。>30 行的替换一律先 `read` 确认现状再分段 edit（本次 ContentHeader 整段替换失败一次）。
+6. **大段 JSX 替换先 read 当前文件**：edit 的 oldText 必须与磁盘逐字节一致；import 段被前置修改后，按旧内容拼整段替换会失败。>30 行的替换一律先 `read` 确认现状再分段 edit（本次 ContentHeader 整段替换失败一次）。**一次 edit 调用含多个 edits 时，某块不匹配会静默跳过，返回只报实际替换数——必须核对返回的 block 数与预期一致**（ViewSwitcher 双 edits 曾只替换 1 块，import 换了但 JSX 没换，typecheck 报未使用导入才暴露）。
+7. **index.css 颜色变量双写坑（hex + oklch 双行）**：每个 CSS 变量都是 `--x: #hex;` + `--x: oklch(...)` 双行，**oklch 行生效**（hex 行是供不支持 oklch 的老 uTools 内核的降级值，lightningcss 按 chrome 88 目标处理）。改色必须两行同步；oklch 4 位小数精度与 hex 存在 <1/255 转换误差（如 #f7f7f8 ≈ oklch(0.9785) 实测渲染 lab L=97.506 ≈ #f8f8f8），computed-style 断言不能比精确值，用 lab 区间断言（如 L∈(97.4,97.7)）。

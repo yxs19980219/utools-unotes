@@ -103,11 +103,11 @@ function ObjectHeaderActions({ objectId }: { objectId: string }) {
 
   return (
     <>
-      <div className="flex h-11 shrink-0 items-center gap-2 px-3">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
         <Badge variant="secondary" className="shrink-0">
           {sourceTypeLabel(object.sourceType, sourceTypes)}
         </Badge>
-        <h2 className="min-w-0 flex-1 truncate text-[0.9rem] font-medium" title={object.title}>
+        <h2 className="min-w-0 flex-1 truncate text-base font-semibold" title={object.title}>
           {object.title}
         </h2>
         <span className="shrink-0 text-xs text-muted-foreground">笔记 · {notes.length}</span>
@@ -218,8 +218,8 @@ export default function ContentHeader() {
   // 编辑态：全内容区被表单替换，标题行右侧操作全部隐藏（design 交互细节 5）
   if (editing) {
     return (
-      <header className="flex h-11 shrink-0 items-center gap-2 px-3">
-        <h1 className="min-w-0 flex-1 truncate text-[0.9rem] font-medium" title={title}>
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+        <h1 className="min-w-0 flex-1 truncate text-base font-semibold" title={title}>
           {title}
         </h1>
       </header>
@@ -232,8 +232,8 @@ export default function ContentHeader() {
   }
 
   return (
-    <header className="flex h-11 shrink-0 items-center justify-between gap-2 px-3">
-      <h1 className="min-w-0 flex-1 truncate text-[0.9rem] font-medium" title={title}>
+    <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
+      <h1 className="min-w-0 flex-1 truncate text-base font-semibold" title={title}>
         {title}
       </h1>
 

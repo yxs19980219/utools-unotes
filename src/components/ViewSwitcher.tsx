@@ -2,10 +2,12 @@
  * components/ViewSwitcher.tsx —— 侧边栏顶部分段控件（R5，08-12 重构）
  *
  * [首页|标签|归档] 三视图均分侧边栏宽度（设置入口已移至底部齿轮 SidebarSettingsButton）。
- * - 侧边栏加深（bg-sidebar #f0f0f0）后 TabsList 去 bg-muted（不可辨），改透明底；
- *   Tab 悬停底色 hover:bg-accent/60、选中白底（data-active:bg-background）
+ * - 侧边栏变浅（bg-sidebar #f7f7f8）后 TabsList 透明底，视图间浅灰竖线（Separator）分隔；
+ *   悬停 hover:bg-accent、选中白底+微阴影+加粗（对比明显）；dark 下悬停保持原 accent/60
  * - 路由切换直接调用（实时保存时代无确认）
  */
+import { Fragment } from 'react'
+import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useUiStore, type View } from '@/stores/ui'
 
@@ -22,14 +24,18 @@ export default function ViewSwitcher() {
   return (
     <Tabs value={view} onValueChange={(v) => setView(v as View)} className="w-full gap-0">
       <TabsList className="w-full bg-transparent p-0">
-        {VIEWS.map((v) => (
-          <TabsTrigger
-            key={v.value}
-            value={v.value}
-            className="h-8 rounded-md px-1 text-[0.9rem] transition-colors hover:bg-accent/60"
-          >
-            {v.label}
-          </TabsTrigger>
+        {VIEWS.map((v, i) => (
+          <Fragment key={v.value}>
+            {i > 0 && (
+              <Separator orientation="vertical" className="h-4 shrink-0 bg-sidebar-border" />
+            )}
+            <TabsTrigger
+              value={v.value}
+              className="h-8 rounded-md px-1 text-[0.9rem] transition-colors hover:bg-accent data-active:font-semibold dark:hover:bg-accent/60"
+            >
+              {v.label}
+            </TabsTrigger>
+          </Fragment>
         ))}
       </TabsList>
     </Tabs>
