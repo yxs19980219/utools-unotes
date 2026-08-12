@@ -4,14 +4,20 @@
  * 产品语义（用户确认）：
  * - 创建笔记时不给正文，点击卡片进入此处写内容
  * - 正文为空 → 直接内联 CodeMirror 即时渲染编辑器（可写即所见）
- * - 正文非空 → 只读渲染 + 「编辑」按钮切换编辑器；Ctrl+S / 保存按钮落库
+ * - 正文非空 → 只读渲染 + 「写正文」切换编辑器；Ctrl+S / 保存按钮落库
+ * - 编辑态顶部一行 Markdown 快捷工具栏（19 项插入，见 MarkdownToolbar）
+ * - 标题/标签编辑低频：走卡片右侧操作（NoteCard 悬停「编辑」→ NoteForm），
+ *   详情页不再放编辑按钮；「更新于」不单独占行（空间紧张），标签随正文区展示
  * - 归档笔记（AC9/R13）：纯只读，无任何编辑入口
  */
 import { useState } from 'react'
 import { ArrowLeftIcon, PencilIcon, SaveIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
-import CodeMirrorEditor from '@/components/Editor/CodeMirrorEditor'
+import CodeMirrorEditor, {
+  type MarkdownInsertApi,
+} from '@/components/Editor/CodeMirrorEditor'
+import MarkdownToolbar from '@/components/Editor/MarkdownToolbar'
 import MarkdownView from '@/components/MarkdownView'
 import TagChip from '@/components/TagChip'
 import { Badge } from '@/components/ui/badge'
@@ -32,13 +38,14 @@ export default function NoteView({ noteId }: { noteId: string }) {
   const tags = useTagsStore((s) => s.tags)
   const closeNote = useUiStore((s) => s.closeNote)
   const selectObject = useUiStore((s) => s.selectObject)
-  const startEditing = useUiStore((s) => s.startEditing)
   const updateNote = useNotesStore((s) => s.update)
 
-  /** 正文编辑态：空正文默认直接进入；非空经「编辑」按钮进入 */
+  /** 正文编辑态：空正文默认直接进入；非空经「写正文」按钮进入 */
   const [editingBody, setEditingBody] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  // 编辑器插入 API（state 驱动：ref 变化不触发渲染，工具栏需要实时拿到实例）
+  const [editorApi, setEditorApi] = useState<MarkdownInsertApi | null>(null)
 
   if (!note) {
     return (
@@ -83,7 +90,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* 顶部工具行：返回 + 归属对象 + 标题 + 编辑 */}
+      {/* 顶部工具行：返回 + 归属对象 + 标题（归档只读标记） */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1.5">
         <Button variant="ghost" size="icon-sm" aria-label="返回" onClick={closeNote}>
           <ArrowLeftIcon data-icon />
@@ -106,29 +113,17 @@ export default function NoteView({ noteId }: { noteId: string }) {
             已归档（只读）
           </Badge>
         )}
-        {!readonly && (
-          <Button variant="outline" size="sm" onClick={() => startEditing('note', note._id)}>
-            <PencilIcon data-icon />
-            编辑
-          </Button>
-        )}
       </div>
 
-      {/* 元信息行：标签 + 时间（正文编辑时保持可见） */}
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border px-4 py-1.5">
-        {tagChips.map((t) => (
-          <TagChip key={t._id} tag={t} />
-        ))}
-        <span className="ml-auto text-[0.7rem] text-muted-foreground/80">
-          更新于 {formatTime(note.updatedAt)}
-        </span>
-      </div>
+      {/* 编辑态：Markdown 快捷操作栏（19 项插入，仅编辑时占一行） */}
+      {showEditor && <MarkdownToolbar api={editorApi ?? EMPTY_API} />}
 
       {/* 正文区：编辑态（CodeMirror 即时渲染）/ 只读态（MarkdownView） */}
       {showEditor ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-hidden">
             <CodeMirrorEditor
+              ref={setEditorApi}
               value={draft}
               onChange={setDraft}
               onSave={() => void saveBody()}
@@ -139,7 +134,12 @@ export default function NoteView({ noteId }: { noteId: string }) {
           <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-3 py-2">
             <span className="mr-auto text-xs text-muted-foreground">Ctrl+S 保存正文</span>
             {editingBody && (
-              <Button variant="outline" size="sm" onClick={() => setEditingBody(false)} disabled={saving}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditingBody(false)}
+                disabled={saving}
+              >
                 取消
               </Button>
             )}
@@ -152,6 +152,15 @@ export default function NoteView({ noteId }: { noteId: string }) {
       ) : (
         <ScrollArea className="min-h-0 flex-1">
           <article className="flex flex-col gap-3 p-4">
+            {/* 元信息：标签 + 更新时间（不单独占行，随正文区展示） */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {tagChips.map((t) => (
+                <TagChip key={t._id} tag={t} />
+              ))}
+              <span className="ml-auto text-[0.7rem] text-muted-foreground/80">
+                更新于 {formatTime(note.updatedAt)}
+              </span>
+            </div>
             {note.content ? (
               <MarkdownView content={note.content} />
             ) : (
@@ -177,4 +186,11 @@ export default function NoteView({ noteId }: { noteId: string }) {
       )}
     </div>
   )
+}
+
+/** 未挂载编辑器时的空实现（工具栏点击无效果，编辑器挂载后 ref 自动生效） */
+const EMPTY_API: MarkdownInsertApi = {
+  wrap: () => {},
+  block: () => {},
+  focus: () => {},
 }

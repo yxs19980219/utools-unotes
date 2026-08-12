@@ -31,8 +31,8 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   '&': {
     backgroundColor: 'transparent',
     color: 'var(--foreground)',
-    // 正文 15px：uTools 窗口在 Windows DPI 缩放下 14px 偏小
-    fontSize: '0.9375rem',
+    // 正文 16px：uTools 窗口在 Windows DPI 缩放下偏小，用户要求加大
+    fontSize: '1rem',
     height: '100%',
   },
   '&.cm-focused': { outline: 'none' },
@@ -59,10 +59,10 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   /* 非光标行标题/列表标记：完全收起（display:none 不占位）→ 内容顶格展示（Obsidian 折叠标记同款） */
   '.sn-md-hidden': { display: 'none' },
   /* 标题整行样式（字号/字重随级别，与 MarkdownView 只读渲染对齐） */
-  '.sn-md-h1': { fontSize: '1.4rem', fontWeight: '700', lineHeight: '1.3' },
-  '.sn-md-h2': { fontSize: '1.2rem', fontWeight: '650', lineHeight: '1.3' },
-  '.sn-md-h3': { fontSize: '1.05rem', fontWeight: '600', lineHeight: '1.4' },
-  '.sn-md-h4': { fontSize: '0.95rem', fontWeight: '600', color: 'var(--muted-foreground)', lineHeight: '1.4' },
+  '.sn-md-h1': { fontSize: '1.6rem', fontWeight: '700', lineHeight: '1.25' },
+  '.sn-md-h2': { fontSize: '1.35rem', fontWeight: '650', lineHeight: '1.3' },
+  '.sn-md-h3': { fontSize: '1.15rem', fontWeight: '600', lineHeight: '1.35' },
+  '.sn-md-h4': { fontSize: '1rem', fontWeight: '600', color: 'var(--muted-foreground)', lineHeight: '1.4' },
   '.sn-md-bold': { fontWeight: '600' },
   '.sn-md-italic': { fontStyle: 'italic' },
   '.sn-md-code': {
@@ -112,12 +112,11 @@ export const markdownEditorTheme: Extension = EditorView.theme({
     lineHeight: '1',
     color: 'var(--muted-foreground)',
   },
-  /* 无序列表项目符号（源文本 `- ` 的替换显示） */
+  /* 无序列表项目符号（源文本 `- ` 的替换显示）：跟随正文色（黑色），非灰色 */
   '.sn-list-bullet': {
     display: 'inline-block',
     width: '1em',
-    color: 'var(--muted-foreground)',
-    opacity: '0.7',
+    color: 'inherit',
   },
 })
 
@@ -203,8 +202,6 @@ const LIST_MARKER_RE = /^(\s*)([-*+]|\d+[.)])(\s+)/
 const UL_MARKER_RE = /^\s*[-*+]\s+/
 /** 任务列表：列表标记 + [ ]/[x] */
 const TASK_RE = /^(\s*(?:[-*+]|\d+[.)])\s+)\[([ xX])\]/
-/** 任务列表“进行中”（`- [` 已输入但尚未闭合）：保持原文显示，避免中间态被误渲染为无序列表 • */
-const TASK_PENDING_RE = /^\s*[-*+\d][.)]?\s+\[/
 /** 行内代码片断（不含换行）；用于先从行文本中切出，避免其余行内正则误命中 */
 const CODE_SPAN_RE = /`[^`\n]+`/g
 /**
@@ -325,7 +322,7 @@ export function buildDecorations(state: EditorState): DecorationSet {
       continue
     }
 
-    // 任务列表：标记淡色 + [ ]/[x] 替换为复选框 Widget（完整匹配优先）
+    // 任务列表：标记淡色 + [ ]/[x] 替换为复选框 Widget
     const task = TASK_RE.exec(text)
     if (task) {
       const markerLen = task[1].length
@@ -337,12 +334,6 @@ export function buildDecorations(state: EditorState): DecorationSet {
         Decoration.replace({ widget: new TaskBoxWidget(task[2].toLowerCase() === 'x') }),
       )
       scanInline(builder, boxFrom + 3, text.slice(markerLen + 3))
-      continue
-    }
-
-    // 任务列表进行中（- [ 已输入但未闭合）：保持原文，避免刚打出 - 就被替换成 •
-    if (TASK_PENDING_RE.test(text)) {
-      scanInline(builder, from, text)
       continue
     }
 

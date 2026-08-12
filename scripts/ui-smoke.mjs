@@ -78,6 +78,14 @@ try {
   })
   ok('即时渲染：标题样式装饰', deco.headingStyled)
   ok('即时渲染：无序列表 • 项目符号', deco.bulletCount >= 2)
+
+  // 3b. 快捷工具栏：点击「勾选框」插入任务列表
+  await page.keyboard.press('Enter')
+  await page.getByRole('button', { name: '勾选框' }).click()
+  await page.keyboard.type('待办项')
+  await page.waitForTimeout(300)
+  const taskCount = await page.evaluate(() => document.querySelectorAll('.sn-task-box').length)
+  ok('快捷工具栏：勾选框插入', taskCount >= 1)
   await page.getByRole('button', { name: '保存正文' }).click()
   await page.waitForTimeout(800)
   const saved = await page.evaluate(() => document.body.innerText)

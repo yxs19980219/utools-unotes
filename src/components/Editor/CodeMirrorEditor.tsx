@@ -11,8 +11,11 @@
  *   输入时光标不跳（typingLatch 机制）；外部改 value（切笔记）才整文替换
  * - extensions/basicSetup 用 useMemo 固定引用：@uiw 的 reconfigure effect 依赖
  *   extensions/onChange 等引用，避免每次输入触发整编辑器 reconfigure
+ * - forwardRef 暴露 MarkdownInsertApi：快捷工具栏（MarkdownToolbar）调用
+ *   wrap/block 在光标处插入 markdown 语法，源文本始终为标准 markdown
  */
-import { useMemo, useRef } from 'react'
+import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
+import type { EditorView } from '@codemirror/view'
 import CodeMirror from '@uiw/react-codemirror'
 import { indentWithTab } from '@codemirror/commands'
 import type { BasicSetupOptions } from '@uiw/codemirror-extensions-basic-setup'
@@ -35,6 +38,18 @@ interface CodeMirrorEditorProps {
   className?: string
 }
 
+/** 快捷工具栏插入 API（MarkdownToolbar 消费） */
+export interface MarkdownInsertApi {
+  /** 包裹：选中文本包 before..after；无选中插 before+placeholder+after，光标居中 */
+  wrap(before: string, after?: string, placeholder?: string): void
+  /**
+   * 行级插入：空行直接行首插入；非空行在行首插入（行首已有标题标记时替换级别）
+   * block=true 时在光标处插入多行块（prefix\\nsuffix），光标居中
+   */
+  block(prefix: string, suffix?: string, opts?: { block?: boolean; placeholder?: string }): void
+  focus(): void
+}
+
 const BASIC_SETUP: BasicSetupOptions = {
   lineNumbers: false,
   foldGutter: false,
@@ -44,48 +59,124 @@ const BASIC_SETUP: BasicSetupOptions = {
   syntaxHighlighting: false,
 }
 
-export default function CodeMirrorEditor({
-  value,
-  onChange,
-  onSave,
-  placeholder,
-  autoFocus = false,
-  className,
-}: CodeMirrorEditorProps) {
-  // saveRef：keymap 创建后不随渲染重建，回调永远取最新闭包
-  const saveRef = useRef(onSave)
-  saveRef.current = onSave
+const CodeMirrorEditor = forwardRef<MarkdownInsertApi, CodeMirrorEditorProps>(
+  function CodeMirrorEditor(
+    { value, onChange, onSave, placeholder, autoFocus = false, className },
+    ref,
+  ) {
+    // saveRef：keymap 创建后不随渲染重建，回调永远取最新闭包
+    const saveRef = useRef(onSave)
+    saveRef.current = onSave
+    const viewRef = useRef<EditorView | null>(null)
 
-  const extensions = useMemo(
-    () => [
-      markdown(),
-      markdownDecorationExtension,
-      keymap.of([
-        // Tab 缩进 / Shift+Tab 反缩进（嵌套列表必备，basicSetup 默认不含）
-        indentWithTab,
-        {
-          key: 'Mod-s',
-          run: () => {
-            saveRef.current?.()
-            return true // 阻断浏览器默认（保存页面等）
-          },
+    const api = useMemo<MarkdownInsertApi>(() => {
+      const getView = () => viewRef.current
+      return {
+        wrap(before, after = before, placeholderText = '') {
+          const view = getView()
+          if (!view) return
+          const { from, to } = view.state.selection.main
+          const sel = view.state.sliceDoc(from, to)
+          const text = sel ? before + sel + after : before + placeholderText + after
+          view.dispatch({
+            changes: { from, to, insert: text },
+            selection: sel ? { anchor: from + text.length } : { anchor: from + before.length },
+          })
+          view.focus()
         },
-      ]),
-    ],
-    [],
-  )
+        block(prefix, suffix = '', opts = {}) {
+          const view = getView()
+          if (!view) return
+          const { head } = view.state.selection.main
+          const line = view.state.doc.lineAt(head)
+          const lineText = view.state.sliceDoc(line.from, line.to)
 
-  return (
-    <CodeMirror
-      value={value}
-      onChange={onChange}
-      extensions={extensions}
-      theme={markdownEditorTheme}
-      placeholder={placeholder}
-      autoFocus={autoFocus}
-      height="100%"
-      basicSetup={BASIC_SETUP}
-      className={cn('h-full', className)}
-    />
-  )
-}
+          if (opts.block) {
+            // 多行块（代码块/公式块/表格/分割线）：光标处插入，光标落在内容起点/末尾
+            const text = suffix ? `${prefix}\n${suffix}\n` : prefix
+            const caret = suffix ? head + prefix.length + 1 : head + text.length
+            view.dispatch({
+              changes: { from: head, to: head, insert: text },
+              selection: { anchor: caret },
+            })
+            view.focus()
+            return
+          }
+
+          // 行级：标题/列表/引用/勾选框——光标始终落在标记之后（prefix.length）
+          const insert = (text: string, cursorOffset: number) => {
+            view.dispatch({
+              changes: { from: line.from, to: line.from, insert: text },
+              selection: { anchor: head + cursorOffset },
+            })
+          }
+          // 标题：行首已有 # 标记则替换级别（如 ## → #）
+          const headingMatch = /^#{1,6}\s+/.exec(lineText)
+          if (/^#{1,6}\s+/.test(prefix) && headingMatch) {
+            const headFrom = line.from + headingMatch[0].length
+            view.dispatch({
+              changes: { from: line.from, to: headFrom, insert: prefix },
+              selection: { anchor: head + (prefix.length - headingMatch[0].length) },
+            })
+            view.focus()
+            return
+          }
+          if (lineText.trim() === '') {
+            // 空行：行首插 prefix（+placeholder），光标在 prefix 后
+            const ph = opts.placeholder ?? ''
+            insert(prefix + ph, prefix.length)
+          } else if (lineText.startsWith(prefix.trimStart())) {
+            // 已有同类型标记：不重复插入，仅聚焦
+            view.focus()
+          } else {
+            insert(prefix, prefix.length)
+          }
+          view.focus()
+        },
+        focus() {
+          getView()?.focus()
+        },
+      }
+    }, [])
+
+    useImperativeHandle(ref, () => api, [api])
+
+    const extensions = useMemo(
+      () => [
+        markdown(),
+        markdownDecorationExtension,
+        keymap.of([
+          // Tab 缩进 / Shift+Tab 反缩进（嵌套列表必备，basicSetup 默认不含）
+          indentWithTab,
+          {
+            key: 'Mod-s',
+            run: () => {
+              saveRef.current?.()
+              return true // 阻断浏览器默认（保存页面等）
+            },
+          },
+        ]),
+      ],
+      [],
+    )
+
+    return (
+      <CodeMirror
+        value={value}
+        onChange={onChange}
+        extensions={extensions}
+        theme={markdownEditorTheme}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        height="100%"
+        basicSetup={BASIC_SETUP}
+        onCreateEditor={(view) => {
+          viewRef.current = view
+        }}
+        className={cn('h-full', className)}
+      />
+    )
+  },
+)
+
+export default CodeMirrorEditor
