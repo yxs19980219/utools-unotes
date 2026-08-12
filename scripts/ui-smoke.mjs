@@ -72,12 +72,12 @@ try {
   const deco = await page.evaluate(() => {
     const cm = document.querySelector('.cm-content')
     return {
-      dimCount: cm?.querySelectorAll('.sn-md-dim').length ?? 0,
+      bulletCount: cm?.querySelectorAll('.sn-list-bullet').length ?? 0,
       headingStyled: !!cm?.querySelector('.cm-line .sn-md-h1'),
     }
   })
   ok('即时渲染：标题样式装饰', deco.headingStyled)
-  ok('即时渲染：列表标记淡色（- 符号）', deco.dimCount >= 2)
+  ok('即时渲染：无序列表 • 项目符号', deco.bulletCount >= 2)
   await page.getByRole('button', { name: '保存正文' }).click()
   await page.waitForTimeout(800)
   const saved = await page.evaluate(() => document.body.innerText)

@@ -38,6 +38,7 @@ function main() {
     '- 列表项一',
     '- [x] 已完成任务',
     '- [ ] 待办任务',
+    '1. 有序项一',
     '',
     '> 引用内容',
     '',
@@ -96,7 +97,15 @@ function main() {
   // 3. 列表标记 + 任务复选框 Widget
   {
     const l6 = lineAt(6)
-    assert.equal(clsAt(items, l6.from).includes('sn-md-dim'), true, '普通列表标记淡色')
+    // 无序列表：标记替换为 • Widget（源文本不变，仅显示替换）
+    assert.equal(
+      items.some((i) => i.from === l6.from && i.to === l6.from + 2 && i.widget !== null),
+      true,
+      '无序列表标记替换为 • Widget',
+    )
+    // 有序列表：标记保持淡色（数字不替换）
+    const l6b = lineAt(9)
+    assert.equal(clsAt(items, l6b.from).includes('sn-md-dim'), true, '有序列表标记淡色')
     const l7 = lineAt(7)
     const boxFrom = l7.from + 2 // '- ' 后
     const boxItems = items.filter((i) => i.from === boxFrom && i.to === boxFrom + 3)
@@ -113,7 +122,7 @@ function main() {
 
   // 4. 引用：> 淡色 + 整行边框样式
   {
-    const l10 = lineAt(10)
+    const l10 = lineAt(11)
     assert.equal(clsAt(items, l10.from).includes('sn-md-dim'), true, '引用 > 淡色')
     const whole = items.filter((i) => i.from === l10.from && i.to === l10.to)
     assert.equal(whole.some((i) => i.cls === 'sn-md-quote'), true, '引用整行边框样式')
@@ -122,7 +131,7 @@ function main() {
 
   // 5. 分隔线：整行 hr 样式
   {
-    const l12 = lineAt(12)
+    const l12 = lineAt(13)
     const hr = items.filter((i) => i.from === l12.from && i.to === l12.to)
     assert.equal(hr.some((i) => i.cls === 'sn-md-hr'), true, '--- 整行 hr 样式')
     ok('分隔线：--- 渲染为水平线')
@@ -130,11 +139,11 @@ function main() {
 
   // 6. 围栏代码块：围栏行淡色 + 内部等宽背景
   {
-    const l14 = lineAt(14)
+    const l14 = lineAt(15)
     assert.equal(clsAt(items, l14.from).includes('sn-md-fence'), true, '开围栏行淡色')
-    const l15 = lineAt(15)
+    const l15 = lineAt(16)
     assert.equal(clsAt(items, l15.from).includes('sn-md-codeblock'), true, '代码内容行样式')
-    const l16 = lineAt(16)
+    const l16 = lineAt(17)
     assert.equal(clsAt(items, l16.from).includes('sn-md-fence'), true, '闭围栏行淡色')
     ok('代码块：围栏行淡色 + 内容行等宽背景')
   }

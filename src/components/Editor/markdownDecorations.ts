@@ -111,6 +111,13 @@ export const markdownEditorTheme: Extension = EditorView.theme({
     lineHeight: '1',
     color: 'var(--muted-foreground)',
   },
+  /* 无序列表项目符号（源文本 `- ` 的替换显示） */
+  '.sn-list-bullet': {
+    display: 'inline-block',
+    width: '1em',
+    color: 'var(--muted-foreground)',
+    opacity: '0.7',
+  },
 })
 
 /* ------------------------------------------------------------------ */
@@ -158,6 +165,25 @@ class TaskBoxWidget extends WidgetType {
   }
 }
 
+/** 无序列表标记：源文本 `- ` 替换显示为项目符号 `•`（Obsidian 同款，源 markdown 不变） */
+class BulletWidget extends WidgetType {
+  eq(): boolean {
+    return true
+  }
+
+  ignoreEvent(): boolean {
+    return true
+  }
+
+  toDOM(): HTMLElement {
+    const dot = document.createElement('span')
+    dot.className = 'sn-list-bullet'
+    dot.textContent = '•'
+    dot.setAttribute('aria-hidden', 'true')
+    return dot
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* 语法正则                                                             */
 /* ------------------------------------------------------------------ */
@@ -172,6 +198,8 @@ const HR_RE = /^\s*(?:---|\*\*\*)\s*$/
 const QUOTE_RE = /^>\s?/
 /** 列表标记（ul: 短横线/星号/加号，ol: 1. / 1)）：捕获「缩进 + 标记 + 空白」 */
 const LIST_MARKER_RE = /^(\s*(?:[-*+]|\d+[.)])\s+)/
+/** 无序标记（-、*、+）——替换显示为 • */
+const UL_MARKER_RE = /^\s*[-*+]\s+/
 /** 任务列表：列表标记 + [ ]/[x] */
 const TASK_RE = /^(\s*(?:[-*+]|\d+[.)])\s+)\[([ xX])\]/
 /** 行内代码片断（不含换行）；用于先从行文本中切出，避免其余行内正则误命中 */
@@ -309,11 +337,15 @@ export function buildDecorations(state: EditorState): DecorationSet {
       continue
     }
 
-    // 普通列表：标记淡色
+    // 普通列表：无序标记替换为 •（显示），有序标记淡色保留
     const list = LIST_MARKER_RE.exec(text)
     if (list) {
       const markerLen = list[1].length
-      builder.add(from, from + markerLen, dimMark)
+      if (UL_MARKER_RE.test(text)) {
+        builder.add(from, from + markerLen, Decoration.replace({ widget: new BulletWidget() }))
+      } else {
+        builder.add(from, from + markerLen, dimMark)
+      }
       scanInline(builder, from + markerLen, text.slice(markerLen))
       continue
     }
