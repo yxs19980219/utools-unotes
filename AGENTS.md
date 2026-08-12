@@ -1,3 +1,5 @@
+对于任何本地代码理解任务（如定位实现、追踪调用链、影响范围等）或修改代码前，请优先使用 CodeGraph MCP 工具——在使用 grep/read 循环之前。
+
 <!-- TRELLIS:START -->
 # Trellis Instructions
 

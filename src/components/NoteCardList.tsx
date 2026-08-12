@@ -231,7 +231,7 @@ export default function NoteCardList({
               <span className="text-lg leading-none">📝</span>
             </EmptyMedia>
             <EmptyTitle>还没有笔记</EmptyTitle>
-            <EmptyDescription>点击右上角「新建」记录第一条要点</EmptyDescription>
+            <EmptyDescription>点击顶栏「新笔记」记录第一条要点</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>

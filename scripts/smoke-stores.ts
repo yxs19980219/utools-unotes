@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict'
 import { resetDbForTest } from '../src/services/db.ts'
 import { bootstrapStores } from '../src/stores/bootstrap.ts'
-import { useObjectsStore, selectPinnedObjects } from '../src/stores/objects.ts'
+import { useObjectsStore, selectActiveObjects, selectArchivedObjects } from '../src/stores/objects.ts'
 import { useNotesStore, selectNotesByObject } from '../src/stores/notes.ts'
 import { useSettingsStore } from '../src/stores/settings.ts'
 import { countNotesByTag, useTagsStore } from '../src/stores/tags.ts'
@@ -67,24 +67,23 @@ async function main() {
   assert.equal(byObject.length, 2)
   ok('笔记挂载对象 + 按对象查询')
 
-  // ---- 钉住 / 归档互斥（R12） ----
-  console.log('[3] 钉住与归档')
-  // 产品语义：新建对象默认钉住（创建即出现在首页，用户可取消）
-  assert.equal(selectPinnedObjects(useObjectsStore.getState()).length, 1, '新建对象默认钉住')
-  await useObjectsStore.getState().togglePinned(object._id)
-  assert.equal(selectPinnedObjects(useObjectsStore.getState()).length, 0, '取消钉住')
-  await useObjectsStore.getState().togglePinned(object._id)
-  assert.equal(selectPinnedObjects(useObjectsStore.getState()).length, 1)
-  ok('钉住对象出现在首页钉住列表')
+  // ---- 对象一维状态：活跃/归档（三期：去掉 pinned 维度） ----
+  console.log('[3] 对象一维状态（活跃/归档）')
+  // 创建即活跃（首页活跃列表可见，无“默认钉住”概念）
+  assert.equal(selectActiveObjects(useObjectsStore.getState()).length, 1, '新建对象默认活跃')
+  ok('新建对象即活跃（首页活跃列表可见）')
 
   await useObjectsStore.getState().setArchived(object._id, true)
   const archived = useObjectsStore.getState().getById(object._id)
   assert.equal(archived?.archived, true)
-  assert.equal(archived?.pinned, false, '归档应自动取消钉住')
-  assert.equal(selectPinnedObjects(useObjectsStore.getState()).length, 0)
-  ok('归档自动取消钉住（R12 互斥）')
+  assert.equal(selectActiveObjects(useObjectsStore.getState()).length, 0, '归档移出活跃列表')
+  assert.equal(selectArchivedObjects(useObjectsStore.getState()).length, 1, '归档列表可见')
+  ok('归档 → 移出活跃列表（归档列表可见）')
 
+  // 恢复 → 立即回活跃列表（无“重新钉住”步骤）
   await useObjectsStore.getState().setArchived(object._id, false)
+  assert.equal(selectActiveObjects(useObjectsStore.getState()).length, 1)
+  ok('恢复立即回活跃列表（无重新钉住步骤）')
 
   // ---- 标签删除：跨域引用清理 ----
   console.log('[4] 标签删除的引用清理')

@@ -3,8 +3,8 @@
  *
  * 契约：db.ts 是唯一写入口；本层负责内存同步与跨 store 一致性：
  * - 删除对象 → db 级联删笔记后，同步清理 notes 内存（remove）
- * - 归档自动取消钉住（R12：钉住/归档对象级互斥）
- * 消费方（阶段 4 对象详情 / 首页列表）通过本 store 的 selector 读取派生列表。
+ * - 状态一维（三期）：archived 活跃/归档；活跃即首页展示，无 pinned 维度
+ * 消费方通过本 store 的 selector 读取派生列表。
  */
 import { create } from 'zustand'
 import {
@@ -31,9 +31,7 @@ interface ObjectsState {
   update(object: NoteObject): Promise<NoteObject>
   /** 删除对象并级联删除其下全部笔记（db 已级联；此处同步内存），返回删除的笔记数 */
   remove(objectId: string): Promise<number>
-  /** 钉住/取消钉住（归档对象不允许钉住） */
-  togglePinned(objectId: string): Promise<void>
-  /** 归档/取消归档；归档时自动取消钉住（R12） */
+  /** 归档/取消归档（三期：一维状态；归档移出活跃列表，恢复立即回活跃列表） */
   setArchived(objectId: string, archived: boolean): Promise<void>
   /** 删除标签后的对象引用清理（tags 域联动，含 db 写） */
   removeTagFromObjects(tagId: string): Promise<void>
@@ -53,8 +51,8 @@ export const useObjectsStore = create<ObjectsState>()((set, get) => ({
   getById: (id) => get().objects.find((o) => o._id === id),
 
   create: async (input) => {
-    // 新建对象默认钉住（产品语义：创建后立刻出现在首页钉住区，用户可取消）
-    const object = await dbCreateObject({ ...input, pinned: true })
+    // 三期：无默认钉住（状态一维，创建即活跃展示）
+    const object = await dbCreateObject(input)
     set((s) => ({ objects: [...s.objects, object] }))
     return object
   },
@@ -75,19 +73,10 @@ export const useObjectsStore = create<ObjectsState>()((set, get) => ({
     return count
   },
 
-  togglePinned: async (objectId) => {
-    const obj = get().getById(objectId)
-    if (!obj) return
-    // 归档对象不可钉住（R12 互斥）
-    if (obj.archived) return
-    await get().update({ ...obj, pinned: !obj.pinned })
-  },
-
   setArchived: async (objectId, archived) => {
     const obj = get().getById(objectId)
     if (!obj) return
-    // 归档 = 自动取消钉住
-    await get().update({ ...obj, archived, pinned: archived ? false : obj.pinned })
+    await get().update({ ...obj, archived })
   },
 
   removeTagFromObjects: async (tagId) => {
@@ -112,12 +101,7 @@ export function selectActiveObjects(s: ObjectsState): NoteObject[] {
   return s.objects.filter((o) => !o.archived)
 }
 
-/** 钉住对象（R7 首页「钉住对象」区） */
-export function selectPinnedObjects(s: ObjectsState): NoteObject[] {
-  return s.objects.filter((o) => o.pinned && !o.archived)
-}
-
-/** 已归档对象（R9 归档视图侧边栏，二期） */
+/** 已归档对象（归档视图侧边栏） */
 export function selectArchivedObjects(s: ObjectsState): NoteObject[] {
   return s.objects.filter((o) => o.archived)
 }

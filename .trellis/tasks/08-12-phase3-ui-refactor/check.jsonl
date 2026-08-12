@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "渲染层门禁（ui-smoke 必跑，右键菜单/新入口断言）+ 跨层数据流检查清单"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "去 pinned 后跨 store 一致性核查（objects/tags/ui selectors 调用方全量核对）"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "顶栏语境矩阵 → store 选中态 → 操作编排的跨层数据流检查（ContentHeader 重构是核心风险面）"}
+{"file": "C:/Users/Fengzhi/.agents/skills/utools-dev/SKILL.md", "reason": "合规检查：utools.db 红线、构建产物无 development 字段"}

@@ -24,6 +24,8 @@ interface SidebarRowProps {
   onClick?: () => void
   /** 行右侧悬停操作区（阶段 6 标签行操作；点击不触发行选中） */
   actions?: ReactNode
+  /** 右键菜单透传（ContextMenuTrigger asChild 注入；SidebarRow 需转发到根元素） */
+  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void
   className?: string
 }
 
@@ -36,6 +38,7 @@ export default function SidebarRow({
   active,
   onClick,
   actions,
+  onContextMenu,
   className,
 }: SidebarRowProps) {
   const interactive = typeof onClick === 'function'
@@ -45,6 +48,7 @@ export default function SidebarRow({
       tabIndex={interactive ? 0 : undefined}
       data-selected={active ? 'true' : 'false'}
       onClick={interactive ? onClick : undefined}
+      onContextMenu={onContextMenu}
       onKeyDown={(e) => {
         if (interactive && (e.key === 'Enter' || e.key === ' ')) {
           e.preventDefault()

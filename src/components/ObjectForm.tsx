@@ -1,16 +1,14 @@
 /**
  * components/ObjectForm.tsx —— 新建/编辑对象表单（design.md 交互细节 5：全内容区替换）
  *
- * 字段：标题（必填）、来源类型 Select（内置枚举，AC7 二期随设置页扩展）、
- * sourceMeta（author/url/year，均可选）、标签 TagInput 联想补全（阶段 5c，R14/AC4）。
- * 标签写入：tags store resolveTagIds（归并语义，name/aliases 精确命中不重复建），
- * 得到 canonical tagId 列表（R15 数据层约束）。
+ * 字段：标题（必填）、来源类型 Select（内置 + 自定义，三期随设置页扩展）、
+ * sourceMeta（author/url/year，均可选）。
+ * 三期：删除标签输入（对象标签是“死数据”，标签语义只属于笔记——prd R10）。
  * 保存成功：新建 → selectObject(obj._id) 直达详情；编辑 → 留在详情；均 stopEditing。
  */
 import { useState } from 'react'
 import { toast } from 'sonner'
 
-import TagInput from '@/components/TagInput'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -23,7 +21,6 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useSourceTypes } from '@/lib/sourceTypes'
 import { useObjectsStore } from '@/stores/objects'
-import { useTagsStore } from '@/stores/tags'
 import { useUiStore } from '@/stores/ui'
 import type { SourceMeta } from '@/types'
 
@@ -51,7 +48,6 @@ export default function ObjectForm() {
   const [author, setAuthor] = useState(existing?.sourceMeta.author ?? '')
   const [url, setUrl] = useState(existing?.sourceMeta.url ?? '')
   const [year, setYear] = useState(existing?.sourceMeta.year ?? '')
-  const [tags, setTags] = useState<string[]>(existing?.tags ?? [])
   const [saving, setSaving] = useState(false)
 
   const canSave = title.trim().length > 0 && !saving
@@ -65,19 +61,12 @@ export default function ObjectForm() {
         url: url.trim() || undefined,
         year: year.trim() || undefined,
       }
-      // 提交语义：标签统一经 resolveTagIds 归并（唯一入口；TagInput 已保证 canonical）
-      const tagIds = await useTagsStore.getState().resolveTagIds(
-        tags
-          .map((id) => useTagsStore.getState().getById(id)?.name)
-          .filter((n): n is string => !!n),
-      )
       if (existing) {
         await updateObject({
           ...existing,
           title: title.trim(),
           sourceType,
           sourceMeta,
-          tags: tagIds,
         })
         toast.success('对象已更新')
       } else {
@@ -85,7 +74,6 @@ export default function ObjectForm() {
           title: title.trim(),
           sourceType,
           sourceMeta,
-          tags: tagIds,
         })
         toast.success(`已创建「${obj.title}」`)
         selectObject(obj._id)
@@ -149,19 +137,6 @@ export default function ObjectForm() {
               onChange={(e) => setYear(e.target.value)}
               placeholder="年份"
             />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel htmlFor="obj-tags">标签</FieldLabel>
-            <TagInput
-              id="obj-tags"
-              value={tags}
-              onChange={setTags}
-              placeholder="输入标签名，如：深度学习（联想命中别名 deep learning / DL）"
-            />
-            <p className="text-xs text-muted-foreground">
-              联想补全匹配标签名与别名；回车直接创建新标签
-            </p>
           </div>
         </div>
       </ScrollArea>

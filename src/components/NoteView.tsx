@@ -67,7 +67,6 @@ export default function NoteView({ noteId }: { noteId: string }) {
   )
   const tags = useTagsStore((s) => s.tags)
   const closeNote = useUiStore((s) => s.closeNote)
-  const selectObject = useUiStore((s) => s.selectObject)
   const setPendingDirty = useUiStore((s) => s.setPendingDirty)
   const requestRoute = useUiStore((s) => s.requestRoute)
   const updateNote = useNotesStore((s) => s.update)
@@ -186,21 +185,11 @@ export default function NoteView({ noteId }: { noteId: string }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* 顶部工具行：返回 + 归属对象 + 标题（归档只读标记） */}
+      {/* 顶部工具行：返回 + 标题（三期：无对象名——已在对象内，侧边栏选中态可见归属） */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1.5">
         <Button variant="ghost" size="icon-sm" aria-label="返回" onClick={() => requestRoute(closeNote)}>
           <ArrowLeftIcon data-icon />
         </Button>
-        {object && (
-          <button
-            type="button"
-            onClick={() => requestRoute(() => selectObject(object._id))}
-            className="max-w-36 truncate rounded px-1 text-xs text-muted-foreground underline-offset-2 hover:bg-muted hover:text-foreground hover:underline"
-            title={object.title}
-          >
-            {object.title}
-          </button>
-        )}
         <h2 className="min-w-0 flex-1 truncate text-sm font-medium" title={note.title}>
           {note.title}
         </h2>

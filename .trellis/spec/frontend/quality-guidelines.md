@@ -58,6 +58,7 @@ npm run smoke:decorations# node scripts/smoke-decorations.ts（编辑器装饰�
 
 写法约定：`node:assert/strict` + 手写 `ok()` 计数，`main().catch(err => process.exit(1))` 失败即非零退出；每个脚本开头 `resetDbForTest()` 隔离数据。**新契约必须带冒烟断言**（如新增搜索语法、新增跨域编排），改动既有契约时先跑对应脚本确认未回归。
 - **node 直测模块禁 `@/` 路径别名**：smoke 脚本用 `node` 直接加载被测 TS 源码（无 bundler），路径别名（`@/`）不解析；且 ESM 要求显式扩展名。被 smoke 直测的模块（如 `markdownDecorations.ts`）内部 import 必须用相对路径 + `.ts` 后缀（vite 构建侧不受影响，`@/` 仍可用）——二期曾踩：装饰器新 import 用 `@/lib/...` 导致 smoke-decorations ERR_MODULE_NOT_FOUND。
+- **浏览器测试 hook 约定**：无 uTools 环境（vite dev）时 `main.tsx` 暴露 `window.__snDebug.setSearch(query)`（注入 ui store 的 setSearch），供 ui-smoke 触发搜索态断言；uTools 内不注入。新增需要测试触发的全局状态可沿用此模式。
 
 ---
 
@@ -82,6 +83,8 @@ npm run smoke:decorations# node scripts/smoke-decorations.ts（编辑器装饰�
 1. **Radix/shadcn Provider 缺失**：`Tooltip` 必须被 `TooltipProvider` 包裹（本项目在 App 根统一包 `<TooltipProvider>`，新组件不要再单独包）。其他 Provider 类组件（Dialog、Select 等）同理自查。
 2. **Zustand selector 返回新引用**：`selectNotesByObject` 这类派生数组 selector 直接传给 `useStore` 会因 getSnapshot 不稳定触发无限重渲染。**必须用 `useShallow` 包裹**：`useNotesStore(useShallow((s) => selectNotesByTag(s, tagId)))`；对象引用（`.find()` 返回值）本身稳定，无需包。
 3. **短路条件 Hook**：`const a = useX() && useY()` 在 `useX()` 返回 false 时跳过 `useY`，状态翻转后 Hook 顺序错位崩溃。**禁止用 `&&`/`||`/三元连接多个 Hook 调用**，一律拆开再合并。
+4. **Radix asChild 注入的事件被展示组件吞掉**：`ContextMenuTrigger asChild` 会向 children 注入 `onContextMenu`/ref，普通函数组件不透传时右键无响应（三期踩坑：SidebarRow 右键菜单不弹）。**被 asChild 包裹的展示组件必须声明并转发事件 props**（`SidebarRow` 的 `onContextMenu`），或改用非 asChild 包裹。
+5. **顶栏语境优先级与内容区路由必须一致**：三期 ContentHeader 按 selectedObjectId 渲染对象操作区，但 ContentArea 路由是 activeNoteId > searchActive > selectedObjectId——搜索态下顶栏仍显示对象操作区（错乱）。**任何按选中态分层的头部/侧栏，其分支条件必须与内容区路由优先级逐条对齐**（本例：`showObjectActions = selectedObjectId && !searchActive`）。
 
 **渲染层验证标准**：涉及组件/布局/编辑器改动的任务，必须跑 `npm run ui-smoke`（playwright-core + 系统 Edge 无头，走 MemoryDb 验证对象→笔记→钉住→首页核心闭环 + 无 console/pageerror）。Dev server 需先启动（5173）。
 

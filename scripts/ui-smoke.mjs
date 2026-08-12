@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * UI 冒烟测试：无头浏览器（系统 Edge/Chrome）走通核心闭环。
+ * UI 冒烟测试：无头浏览器（系统 Edge/Chrome）走通核心闭环（三期交互）。
  *
- * 为什么需要：纯逻辑冒烟（smoke/stores/decorations）覆盖不了渲染层——
- * TooltipProvider 缺失、useShallow 引用缓存、短路 Hook 都是渲染期才爆的错。
- * 本脚本要求 dev server 已在 5173 运行（npm run dev），数据走 MemoryDb（无 utools 环境）。
+ * 三期覆盖：新建对象入口（侧边栏空态 CTA / 活跃对象组 + 按钮）、对象详情唯一顶栏、
+ * 侧边栏对象行右键菜单（编辑/归档/删除）、归档/恢复流程（恢复直回首页活跃列表）、
+ * 设置流程（来源类型增删 + 偏好）、草稿保护（AC8/AC9 + 空正文）、800×600 无横向滚动。
  *
- * 前置：npm i -D playwright-core（不带浏览器，复用系统 Edge/Chrome）
+ * 前置：dev server 已在 5173 运行（npm run dev），数据走 MemoryDb（无 utools 环境）。
  * 运行：npm run ui-smoke
  */
 import { chromium } from 'playwright-core'
@@ -44,15 +44,21 @@ try {
   await page.goto(base, { waitUntil: 'networkidle' })
   await page.waitForTimeout(1500)
 
-  // 1. 新建对象（右上角 新建 → 新建对象）
-  await page.getByRole('button', { name: '新建', exact: true }).click()
-  await page.waitForTimeout(300)
-  await page.locator('[role="menuitem"]').filter({ hasText: '新建对象' }).click()
+  // 1. 新建对象：首页空态 CTA（三期：无顶部「新建▾」，入口 = 侧边栏空态 CTA / 活跃对象组 +）
+  ok('无顶部新建▾下拉', (await page.getByRole('button', { name: '新建', exact: true }).count()) === 0)
+  await page.getByRole('button', { name: '新建对象' }).first().click()
   await page.waitForTimeout(300)
   await page.getByLabel('标题').fill('UI 冒烟测试对象')
   await page.getByRole('button', { name: '创建' }).click()
   await page.waitForTimeout(800)
-  ok('对象详情出现', (await page.evaluate(() => document.body.innerText)).includes('UI 冒烟测试对象'))
+  // 对象详情：唯一顶栏（标题 + 笔记数 + 新笔记），无重复标题行
+  const detailText = await page.evaluate(() => document.body.innerText)
+  ok('对象详情顶栏出现（标题+笔记数）', detailText.includes('UI 冒烟测试对象') && detailText.includes('笔记 · 0'))
+  ok('对象详情顶栏有新笔记按钮', (await page.getByRole('button', { name: /新笔记/ }).count()) >= 1)
+
+  // 1b. 首页侧边栏：活跃对象分组出现对象（三期：无「钉住对象」分组）
+  const sidebarText = await page.locator('aside').innerText()
+  ok('首页侧边栏「活跃对象」分组', sidebarText.includes('活跃对象') && sidebarText.includes('UI 冒烟测试对象'))
 
   // 2. 新建笔记：仅标题+标签（无正文编辑器），保存后回列表
   await page.getByRole('button', { name: /新笔记/ }).first().click()
@@ -92,12 +98,12 @@ try {
   const saved = await page.evaluate(() => document.body.innerText)
   ok('正文保存后只读渲染', saved.includes('列表项一'))
 
-  // 4. 钉住 → 首页钉住区（新建对象默认钉住 + 手动钉住兼容）
+  // 4. 返回对象详情 → 首页活跃列表（三期：无重新钉住概念）
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.waitForTimeout(400)
   await page.getByRole('tab', { name: '首页' }).click()
   await page.waitForTimeout(500)
-  ok('首页钉住区出现对象', (await page.evaluate(() => document.body.innerText)).includes('UI 冒烟测试对象'))
+  ok('首页活跃列表出现对象', await page.locator('aside').getByText('UI 冒烟测试对象').first().isVisible())
 
   // 4b. AC12：800×600 无横向滚动
   const overflow = await page.evaluate(() => ({
@@ -106,23 +112,37 @@ try {
   }))
   ok('AC12：800×600 无横向滚动', overflow.sw <= overflow.cw)
 
-  // 5. 归档流程（AC1/AC2/AC3）：详情归档 → 归档视图只读 → 恢复
+  // 5. 对象行右键菜单（AC3）：编辑/归档/删除 出现
+  await page.locator('aside').getByText('UI 冒烟测试对象').first().click({ button: 'right' })
+  await page.waitForTimeout(400)
+  const menuText = await page.locator('[role="menu"]').innerText()
+  ok('AC3：右键菜单含 编辑/归档/删除',
+    menuText.includes('编辑') && menuText.includes('归档') && menuText.includes('删除'))
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
+
+  // 6. 归档流程（AC1/AC2/AC6）：顶栏归档 → 归档视图只读 → 恢复直回首页
   await page.locator('aside').getByText('UI 冒烟测试对象').first().click()
   await page.waitForTimeout(500)
   await page.getByRole('button', { name: '归档对象' }).click()
   await page.waitForTimeout(300)
   const archiveDialog = page.getByRole('alertdialog')
-  ok('归档确认框提示笔记转只读', (await archiveDialog.innerText()).includes('1 条笔记将一并转为只读'))
+  ok('AC1：归档确认框提示笔记转只读', (await archiveDialog.innerText()).includes('1 条笔记将一并转为只读'))
   await archiveDialog.getByRole('button', { name: '归档', exact: true }).click()
   await page.waitForTimeout(700)
   ok('归档成功提示', (await page.evaluate(() => document.body.innerText)).includes('已归档'))
+  // 首页活跃列表消失
+  await page.getByRole('tab', { name: '首页' }).click()
+  await page.waitForTimeout(500)
+  ok('AC1：归档后首页活跃列表消失', (await page.locator('aside').getByText('UI 冒烟测试对象').count()) === 0)
+  // 归档视图：对象出现 → 只读详情
   await page.getByRole('tab', { name: '归档' }).click()
   await page.waitForTimeout(500)
   ok('归档侧边栏出现对象', await page.locator('aside').getByText('UI 冒烟测试对象').first().isVisible())
   await page.locator('aside').getByText('UI 冒烟测试对象').first().click()
   await page.waitForTimeout(500)
   const archivedDetail = await page.evaluate(() => document.body.innerText)
-  ok('归档详情只读：无新笔记按钮 + 恢复按钮',
+  ok('AC2：归档详情只读（无新笔记/编辑，有恢复+已归档）',
     archivedDetail.includes('已归档（只读）') &&
     (await page.getByRole('button', { name: /新笔记/ }).count()) === 0 &&
     (await page.getByRole('button', { name: '恢复', exact: true }).count()) === 1)
@@ -130,41 +150,44 @@ try {
   await page.getByText('冒烟笔记').first().click()
   await page.waitForTimeout(500)
   const archivedNote = await page.evaluate(() => document.body.innerText)
-  ok('归档笔记只读 NoteView',
-    archivedNote.includes('已归档（只读）') &&
+  ok('归档笔记只读 NoteView', archivedNote.includes('已归档（只读）') &&
     (await page.getByRole('button', { name: /写正文/ }).count()) === 0)
-  // 恢复
+  // 归档视图对象行右键 = 恢复/删除
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.waitForTimeout(400)
+  await page.locator('aside').getByText('UI 冒烟测试对象').first().click({ button: 'right' })
+  await page.waitForTimeout(400)
+  const archivedMenu = await page.locator('[role="menu"]').innerText()
+  ok('AC6：归档行右键含 恢复/删除',
+    archivedMenu.includes('恢复') && archivedMenu.includes('删除') && !archivedMenu.includes('编辑'))
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
+  // 恢复（顶栏按钮）→ 立即回首页活跃列表（AC7：无需重新钉住）
   await page.getByRole('button', { name: '恢复', exact: true }).click()
   await page.waitForTimeout(300)
   await page.getByRole('alertdialog').getByRole('button', { name: '恢复', exact: true }).click()
   await page.waitForTimeout(700)
-  ok('恢复成功提示', (await page.evaluate(() => document.body.innerText)).includes('已恢复'))
-  // 恢复后不自动钉住（R3）：首页侧边栏无该对象；手动钉住后出现
-  await page.getByRole('button', { name: '钉住对象' }).click()
-  await page.waitForTimeout(400)
   await page.getByRole('tab', { name: '首页' }).click()
   await page.waitForTimeout(500)
-  ok('恢复后重新钉住上首页', await page.locator('aside').getByText('UI 冒烟测试对象').first().isVisible())
+  ok('AC7：恢复后立即出现在首页活跃列表',
+    await page.locator('aside').getByText('UI 冒烟测试对象').first().isVisible())
 
-  // 6. 设置流程（AC4/AC5/AC6）：新增类型 → 下拉生效 → 删除（引用计数）→ 偏好
+  // 7. 设置流程（AC4/AC5/AC6）：新增类型 → 下拉生效 → 删除（引用计数）→ 偏好
   await page.getByRole('tab', { name: '设置' }).click()
   await page.waitForTimeout(500)
   await page.getByLabel('新类型名称').fill('播客')
   await page.getByRole('button', { name: '添加' }).click()
   await page.waitForTimeout(600)
   ok('新增类型出现', (await page.evaluate(() => document.body.innerText)).includes('播客'))
-  // AC4：新建对象来源下拉立即出现「播客」（无需刷新）
+  // AC4：新建对象来源下拉立即出现「播客」（入口 = 首页活跃对象组 +）
   await page.getByRole('tab', { name: '首页' }).click()
   await page.waitForTimeout(400)
-  await page.getByRole('button', { name: '新建', exact: true }).click()
-  await page.waitForTimeout(300)
-  await page.locator('[role="menuitem"]').filter({ hasText: '新建对象' }).click()
+  await page.getByRole('button', { name: '新建对象' }).click()
   await page.waitForTimeout(300)
   await page.getByLabel('来源类型').click()
   await page.waitForTimeout(300)
   const hasPodcastOption = await page.getByRole('option', { name: '播客' }).count()
+  ok('AC10：对象表单无标签输入', (await page.getByLabel('标签').count()) === 0)
   await page.getByRole('option', { name: '播客' }).click()
   await page.getByLabel('标题').fill('播客对象')
   await page.getByRole('button', { name: '创建' }).click()
@@ -180,7 +203,6 @@ try {
   ok('AC5：删除确认含引用计数', (await delDialog.innerText()).includes('1 个对象使用该类型'))
   await delDialog.getByRole('button', { name: '删除', exact: true }).click()
   await page.waitForTimeout(600)
-  // 精确断言：类型行（删除按钮）已消失（body 文本含 toast「已删除」关键词，不能用文本匹配）
   ok('AC5：删除后类型消失',
     (await page.getByRole('button', { name: '删除 播客' }).count()) === 0)
   // AC6：偏好默认排序 → 创建时间（保存提示）
@@ -190,13 +212,41 @@ try {
   await page.waitForTimeout(500)
   ok('AC6：偏好保存提示', (await page.evaluate(() => document.body.innerText)).includes('偏好已保存'))
 
-  // 7. 草稿保护（AC8 全流程 + AC9 自动落盘）
+  // 7b. 搜索态（S1 回归：顶栏与 ContentArea 优先级一致 + relevance + 来源筛选）
+  await page.getByRole('tab', { name: '首页' }).click()
+  await page.waitForTimeout(400)
+  await page.locator('aside').getByText('UI 冒烟测试对象').first().click()
+  await page.waitForTimeout(400)
+  await page.evaluate(() => window.__snDebug.setSearch('冒烟'))
+  await page.waitForTimeout(500)
+  ok('搜索态顶栏：搜索结果 + 无对象操作区',
+    (await page.evaluate(() => document.body.innerText)).includes('搜索结果') &&
+    (await page.getByRole('button', { name: '归档对象' }).count()) === 0)
+  ok('搜索态来源筛选出现', (await page.getByLabel('来源类型筛选').count()) === 1)
+  await page.getByRole('button', { name: '排序' }).click()
+  await page.waitForTimeout(300)
+  ok('搜索态排序含相关度', (await page.locator('[role="menuitemradio"]').filter({ hasText: '相关度' }).count()) === 1)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
+  await page.evaluate(() => window.__snDebug.setSearch(''))
+  await page.waitForTimeout(500)
+  ok('退出搜索回对象详情顶栏', (await page.getByRole('button', { name: '归档对象' }).count()) === 1)
+
+  // 8. 草稿保护（AC8 全流程 + AC9 自动落盘）
   await page.getByRole('tab', { name: '首页' }).click()
   await page.waitForTimeout(400)
   await page.locator('aside').getByText('UI 冒烟测试对象').first().click()
   await page.waitForTimeout(500)
   await page.getByText('冒烟笔记').first().click()
   await page.waitForTimeout(500)
+  // AC9：NoteView 顶栏（返回按钮所在行）无对象名，只有笔记自身信息
+  const noteHeaderText = await page
+    .getByRole('button', { name: /返回/ })
+    .first()
+    .locator('xpath=..')
+    .innerText()
+  ok('AC9：笔记详情顶栏无对象名',
+    !noteHeaderText.includes('UI 冒烟测试对象') && noteHeaderText.includes('冒烟笔记'))
   await page.getByRole('button', { name: /写正文/ }).click()
   await page.waitForTimeout(400)
   await page.locator('.cm-content').click()
@@ -229,7 +279,7 @@ try {
   // 清理：删除测试草稿 key（防泄漏）
   await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('sn:draft:')).forEach((k) => localStorage.removeItem(k)))
 
-  // 8. 空正文笔记（可写即所见）草稿保护（S1 场景：editingBody=false 但编辑器可见）
+  // 9. 空正文笔记（可写即所见）草稿保护
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.waitForTimeout(400)
   await page.getByRole('button', { name: /新笔记/ }).first().click()
@@ -239,11 +289,10 @@ try {
   await page.waitForTimeout(700)
   await page.getByText('空正文草稿').first().click()
   await page.waitForTimeout(500)
-  // 空正文：编辑器直接可见（无需点「写正文」）
   ok('空正文笔记直接进入编辑器', await page.evaluate(() => !!document.querySelector('.cm-content')))
   await page.locator('.cm-content').click()
   await page.keyboard.type('空正文草稿内容')
-  await page.waitForTimeout(700) // 防抖落盘
+  await page.waitForTimeout(700)
   const emptyDraftKeys = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('sn:draft:')))
   ok('空正文编辑也自动暂存', emptyDraftKeys.length === 1)
   await page.getByRole('button', { name: /返回/ }).first().click()
@@ -251,8 +300,19 @@ try {
   ok('空正文编辑切走弹确认框', await page.getByRole('alertdialog').getByText('有未保存的改动').isVisible())
   await page.getByRole('alertdialog').getByRole('button', { name: '放弃更改' }).click()
   await page.waitForTimeout(600)
-  // 清理草稿 key（防泄漏）
   await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('sn:draft:')).forEach((k) => localStorage.removeItem(k)))
+
+  // 10. AC3 右键删除执行（级联）：删除「播客对象」
+  await page.getByRole('tab', { name: '首页' }).click()
+  await page.waitForTimeout(400)
+  await page.locator('aside').getByText('播客对象').first().click({ button: 'right' })
+  await page.waitForTimeout(400)
+  await page.locator('[role="menu"]').getByText('删除').click()
+  await page.waitForTimeout(400)
+  await page.getByRole('alertdialog').getByRole('button', { name: '删除', exact: true }).click()
+  await page.waitForTimeout(700)
+  ok('AC3：右键删除执行（级联消失）',
+    (await page.locator('aside').getByText('播客对象').count()) === 0)
 } catch (e) {
   console.error('脚本异常:', e.message.slice(0, 300))
   process.exitCode = 1

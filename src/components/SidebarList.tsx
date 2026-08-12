@@ -1,18 +1,47 @@
 /**
- * components/SidebarList.tsx —— 侧边栏视图列表区（阶段 4：点击联动 + 选中高亮）
+ * components/SidebarList.tsx —— 侧边栏视图列表区（三期：对象一维状态 + 右键菜单）
  *
- * - 首页：钉住对象（图标 = 来源类型映射）+ 钉住标签分组；点击 → selectObject/selectTag；
- *   无钉住时 Empty 引导 CTA「新建对象」→ startEditing('object', null)（4a）
- * - 标签：全部标签（name + 计数 Badge），点击 → selectTag，高亮联动（4a/R8）
- * - 归档：已归档对象列表（标题 + 来源图标 + 归档时间，按归档时间倒序），点击 → selectObject
+ * - 首页：「活跃对象」分组（全部 !archived，updatedAt 倒序；分组标题右侧 + = 新建对象）
+ *   + 「钉住标签」分组（主题维度，保留）；点击 → selectObject/selectTag
+ * - 对象行右键菜单（ContextMenu）：活跃 = 编辑/归档/删除；归档视图 = 恢复/删除
+ *   （删除/归档/恢复均 AlertDialog 确认，删除提示级联笔记数）
+ * - 标签：全部标签（name + 计数 Badge），点击 → selectTag，高亮联动
+ * - 归档：已归档对象列表（标题 + 来源图标 + 归档时间，按归档时间倒序）
  * - 设置：空态占位（内容区为 SettingsView）
  * 路由切换（selectObject/selectTag/startEditing）经 requestRoute（草稿保护 R11/R12）。
  */
-import { useMemo } from 'react'
-import { ArchiveIcon, PinIcon, PlusIcon, SettingsIcon, TagIcon } from 'lucide-react'
+import { useMemo, useState, type ReactNode } from 'react'
+import {
+  ArchiveIcon,
+  ArchiveRestoreIcon,
+  PencilIcon,
+  PinIcon,
+  PlusIcon,
+  SettingsIcon,
+  TagIcon,
+  Trash2Icon,
+} from 'lucide-react'
 
 import SidebarRow from '@/components/SidebarRow'
 import TagRowActions from '@/components/TagRowActions'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import {
   Empty,
   EmptyDescription,
@@ -20,19 +49,24 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { formatTime } from '@/lib/format'
+import {
+  archiveObject,
+  removeObjectWithToast,
+  restoreObject,
+} from '@/lib/objectActions'
 import { sourceTypeIcon } from '@/lib/sourceTypes'
-import { useNotesStore } from '@/stores/notes'
-import { selectArchivedObjects, selectPinnedObjects, useObjectsStore } from '@/stores/objects'
+import { selectNotesByObject, useNotesStore } from '@/stores/notes'
+import { selectActiveObjects, selectArchivedObjects, useObjectsStore } from '@/stores/objects'
 import { countNotesByTag, selectPinnedTags, useTagsStore } from '@/stores/tags'
 import { useUiStore } from '@/stores/ui'
 import { useShallow } from 'zustand/react/shallow'
-import type { Tag } from '@/types'
+import type { NoteObject, Tag } from '@/types'
 
-/** 标签行（阶段 6：悬停 ⋯ 操作 + 选中高亮；首页钉住区与标签视图共用，交互一致） */
+/** 标签行（悬停 ⋯ 操作 + 选中高亮；首页钉住区与标签视图共用，交互一致） */
 function TagSidebarRow({
   tag,
   badge,
@@ -56,11 +90,12 @@ function TagSidebarRow({
   )
 }
 
-/** 分组小标题（钉住对象 / 钉住标签） */
-function SectionLabel({ children }: { children: string }) {
+/** 分组小标题（支持右侧 action，如「活跃对象」的 + 新建按钮） */
+function SectionLabel({ children, action }: { children: string; action?: ReactNode }) {
   return (
-    <div className="px-1.5 pt-2 pb-1 text-xs font-medium text-muted-foreground/80">
-      {children}
+    <div className="flex items-center justify-between px-1.5 pt-2 pb-1">
+      <span className="text-xs font-medium text-muted-foreground/80">{children}</span>
+      {action}
     </div>
   )
 }
@@ -75,12 +110,137 @@ function ListSkeleton() {
   )
 }
 
-/** 首页：钉住对象 + 钉住标签（R7），点击联动 selectObject/selectTag */
+/** 对象行右键菜单（三期：对象级操作收敛于此）：
+ *  活跃对象 = 编辑/归档/删除；归档对象 = 恢复/删除。
+ *  确认框用受控 AlertDialog（state 提升，避免 ContextMenu 与 Dialog 焦点冲突）。 */
+function ObjectContextMenu({
+  object,
+  mode,
+  children,
+}: {
+  object: NoteObject
+  mode: 'active' | 'archived'
+  children: ReactNode
+}) {
+  const startEditing = useUiStore((s) => s.startEditing)
+  const requestRoute = useUiStore((s) => s.requestRoute)
+  const notes = useNotesStore(useShallow((s) => selectNotesByObject(s, object._id)))
+  /** 当前确认框类型（null = 关闭） */
+  const [dialog, setDialog] = useState<'archive' | 'restore' | 'delete' | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const noteCount = notes.length
+
+  const handleArchive = async () => {
+    setBusy(true)
+    const ok = await archiveObject(object._id)
+    if (ok) setDialog(null)
+    setBusy(false)
+  }
+
+  const handleRestore = async () => {
+    setBusy(true)
+    const ok = await restoreObject(object._id)
+    if (ok) setDialog(null)
+    setBusy(false)
+  }
+
+  const handleDelete = async () => {
+    setBusy(true)
+    const count = await removeObjectWithToast(object._id)
+    if (count >= 0) setDialog(null)
+    setBusy(false)
+  }
+
+  const dialogContent =
+    dialog === 'archive' ? (
+      {
+        title: `将归档「${object.title}」？`,
+        desc: `其下 ${noteCount} 条笔记将一并转为只读。归档后可在侧边栏「归档」视图恢复。`,
+        action: '归档',
+      }
+    ) : dialog === 'restore' ? (
+      {
+        title: `恢复对象「${object.title}」？`,
+        desc: `将移回活跃列表，其下 ${noteCount} 条笔记恢复可编辑。`,
+        action: '恢复',
+      }
+    ) : dialog === 'delete' ? (
+      {
+        title: `删除对象「${object.title}」？`,
+        desc: `将删除该对象及其下 ${noteCount} 条笔记，该操作不可恢复。`,
+        action: '删除',
+      }
+    ) : null
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuContent className="min-w-36">
+        {mode === 'active' && (
+          <>
+            <ContextMenuItem
+              onSelect={() => requestRoute(() => startEditing('object', object._id))}
+            >
+              <PencilIcon data-icon />
+              编辑
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => setDialog('archive')}>
+              <ArchiveIcon data-icon />
+              归档
+            </ContextMenuItem>
+          </>
+        )}
+        {mode === 'archived' && (
+          <ContextMenuItem onSelect={() => setDialog('restore')}>
+            <ArchiveRestoreIcon data-icon />
+            恢复
+          </ContextMenuItem>
+        )}
+        {mode === 'active' && <ContextMenuSeparator />}
+        <ContextMenuItem variant="destructive" onSelect={() => setDialog('delete')}>
+          <Trash2Icon data-icon />
+          删除
+        </ContextMenuItem>
+      </ContextMenuContent>
+
+      <AlertDialog
+        open={dialog !== null}
+        onOpenChange={(open) => {
+          if (!open) setDialog(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{dialogContent?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{dialogContent?.desc}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              className={dialog === 'delete' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}
+              onClick={() => {
+                if (dialog === 'archive') void handleArchive()
+                if (dialog === 'restore') void handleRestore()
+                if (dialog === 'delete') void handleDelete()
+              }}
+            >
+              {dialogContent?.action}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </ContextMenu>
+  )
+}
+
+/** 首页：活跃对象（全部 !archived）+ 钉住标签，点击联动 selectObject/selectTag */
 function HomeSidebarGroups() {
   const objectsLoaded = useObjectsStore((s) => s.loaded)
   const tagsLoaded = useTagsStore((s) => s.loaded)
   const loaded = objectsLoaded && tagsLoaded
-  const pinnedObjects = useObjectsStore(useShallow(selectPinnedObjects))
+  const activeObjects = useObjectsStore(useShallow(selectActiveObjects))
   const pinnedTags = useTagsStore(useShallow(selectPinnedTags))
   const selectedObjectId = useUiStore((s) => s.selectedObjectId)
   const selectedTagId = useUiStore((s) => s.selectedTagId)
@@ -88,49 +248,66 @@ function HomeSidebarGroups() {
   const selectTag = useUiStore((s) => s.selectTag)
   const requestRoute = useUiStore((s) => s.requestRoute)
   const startEditing = useUiStore((s) => s.startEditing)
+  // 活跃对象按更新时间倒序（最新改动在前）
+  const sortedObjects = useMemo(
+    () => [...activeObjects].sort((a, b) => b.updatedAt - a.updatedAt),
+    [activeObjects],
+  )
 
   if (!loaded) return <ListSkeleton />
-  if (pinnedObjects.length === 0 && pinnedTags.length === 0) {
+  if (sortedObjects.length === 0 && pinnedTags.length === 0) {
     return (
       <Empty className="gap-2 p-3">
         <EmptyHeader>
           <EmptyMedia variant="icon">
             <PinIcon />
           </EmptyMedia>
-          <EmptyTitle>还没有钉住的内容</EmptyTitle>
-          <EmptyDescription>
-            新建对象后在其详情页钉住，即可在这里快速直达
-          </EmptyDescription>
+          <EmptyTitle>还没有对象</EmptyTitle>
+          <EmptyDescription>创建你的第一个学习对象（书籍 / 视频 / 项目…）</EmptyDescription>
         </EmptyHeader>
-        <div className="flex flex-col items-center gap-1.5">
-          <Button size="sm" onClick={() => requestRoute(() => startEditing('object', null))}>
-            <PlusIcon data-icon />
-            新建对象
-          </Button>
-          <span className="text-xs text-muted-foreground">或从右上角「新建」开始</span>
-        </div>
+        <Button size="sm" onClick={() => requestRoute(() => startEditing('object', null))}>
+          <PlusIcon data-icon />
+          新建对象
+        </Button>
       </Empty>
     )
   }
   return (
     <div className="flex flex-col gap-0.5">
-      {pinnedObjects.length > 0 && (
-        <>
-          <SectionLabel>钉住对象</SectionLabel>
-          {pinnedObjects.map((o) => {
-            const Icon = sourceTypeIcon(o.sourceType)
-            return (
-              <SidebarRow
-                key={o._id}
-                icon={<Icon />}
-                label={o.title}
-                active={selectedObjectId === o._id}
-                onClick={() => requestRoute(() => selectObject(o._id))}
-              />
-            )
-          })}
-        </>
-      )}
+      {/* 活跃对象分组恒渲染（+ 按钮 = 新建对象入口；无对象但钉住标签时也可见） */}
+      <SectionLabel
+        action={
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="新建对象"
+                title="新建对象"
+                onClick={() => requestRoute(() => startEditing('object', null))}
+              >
+                <PlusIcon data-icon />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">新建对象</TooltipContent>
+          </Tooltip>
+        }
+      >
+        活跃对象
+      </SectionLabel>
+      {sortedObjects.map((o) => {
+        const Icon = sourceTypeIcon(o.sourceType)
+        return (
+          <ObjectContextMenu key={o._id} object={o} mode="active">
+            <SidebarRow
+              icon={<Icon />}
+              label={o.title}
+              active={selectedObjectId === o._id}
+              onClick={() => requestRoute(() => selectObject(o._id))}
+            />
+          </ObjectContextMenu>
+        )
+      })}
       {pinnedTags.length > 0 && (
         <>
           <SectionLabel>钉住标签</SectionLabel>
@@ -213,7 +390,7 @@ function ArchivedSidebarList() {
             <ArchiveIcon />
           </EmptyMedia>
           <EmptyTitle>还没有归档对象</EmptyTitle>
-          <EmptyDescription>在对象详情点击「归档」，对象及笔记将移入此处（只读）</EmptyDescription>
+          <EmptyDescription>在对象行右键选择「归档」，对象及笔记将移入此处（只读）</EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -223,14 +400,15 @@ function ArchivedSidebarList() {
       {sorted.map((o) => {
         const Icon = sourceTypeIcon(o.sourceType)
         return (
-          <SidebarRow
-            key={o._id}
-            icon={<Icon />}
-            label={o.title}
-            trailing={formatTime(o.updatedAt)}
-            active={selectedObjectId === o._id}
-            onClick={() => requestRoute(() => selectObject(o._id))}
-          />
+          <ObjectContextMenu key={o._id} object={o} mode="archived">
+            <SidebarRow
+              icon={<Icon />}
+              label={o.title}
+              trailing={formatTime(o.updatedAt)}
+              active={selectedObjectId === o._id}
+              onClick={() => requestRoute(() => selectObject(o._id))}
+            />
+          </ObjectContextMenu>
         )
       })}
     </div>

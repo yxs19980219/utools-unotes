@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "渲染层门禁（ui-smoke 必跑）+ 工作方式约定（按钮级对齐、阶段验收）+ 无横向滚动/语义色规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand store 拆分模式、selector 稳定引用（去 pinned 后 selectors 调整）、requestRoute 草稿拦截不被破坏"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件模式：纯展示+store 接线分离、受控组件、ContextMenu 新组件风格对齐、紧凑密度"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "schema 字段兼容（pinned/对象 tags 保留不读写）、utools.db 约定"}
+{"file": "C:/Users/Fengzhi/.agents/skills/utools-dev/SKILL.md", "reason": "uTools 插件规范：plugin.json、utools.db 红线、CSS 兼容（Lightning CSS）"}
