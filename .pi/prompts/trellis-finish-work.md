@@ -2,19 +2,6 @@
 
 Wrap up the current session: archive the active task (and any other completed-but-unarchived tasks the user wants to clean up) and record the session journal. Code commits are NOT done here — those happen in workflow Phase 3.4 before you invoke this command.
 
-## Step 0: Completion retrospective (spec 沉淀评审, 强制步骤)
-
-按 workflow Phase 3.3 执行完成复盘——本任务/本会话产生了什么值得沉淀的知识？**必须走完判断并向用户报告**，不得跳过：
-
-1. 盘点候选沉淀项（三查）：
-   - 新发现的模式/约定（代码模式、工作方式、流程教训）
-   - 踩过的坑（bug 根因、兼容性陷阱、工具链盲区）
-   - 新的技术决策（选型、架构边界、契约）
-2. **显式列出候选**给用户确认："本次学到 X/Y/Z → 建议写入 .trellis/spec/ 的 <文件>，确认？"（写入 / 跳过 / 调整内容）
-3. 用户确认后更新对应 spec 文件；若用户选择跳过，记录"已评估无沉淀/用户跳过"后继续
-
-重要：spec 更新属于 Phase 3.4 的 commit 范围——若产生了 spec 改动，**不要在这里自动 commit**，按 Step 2 的脏路径逻辑路由（提示用户回 Phase 3.4 提交后重跑本命令）。
-
 ## Step 1: Survey current state
 
 ```bash
