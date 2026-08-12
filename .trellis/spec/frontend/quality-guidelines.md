@@ -112,13 +112,16 @@ git tag -a vX.Y.Z -m "<说明>" && git push origin vX.Y.Z
 # 4. 打包 dist（zip 结构要求 plugin.json/logo/preload/assets 位于根，uTools 导入即用）
 cd dist && powershell -Command "Compress-Archive -Path '*' -DestinationPath '../SourceNote-vX.Y.Z.zip' -Force" && cd ..
 # 5. 创建 GitHub Release（描述用 --notes-file，附 zip 资产）
-gh release create vX.Y.Z SourceNote-vX.Y.Z.zip --title "<name>" --notes-file <file>
+#    --title 必须用仓库名格式（utools-unotes vX.Y.Z），不用产品名 SourceNote；
+#    notes 文件首行不要写 # 标题（与 --title 重复显示两次，2026-08 踩过）
+gh release create vX.Y.Z SourceNote-vX.Y.Z.zip --title "utools-unotes vX.Y.Z" --notes-file <file>
 # 6. 上架：uTools 开发者平台上传 zip
 ```
 
 约定：
 - **zip 不进仓库**（.gitignore 已含 `SourceNote-*.zip`），用完即删，需要时从 Release 下载
-- Release 标题与仓库名一致（当前 `utools-unotes`）；tag 用 `v` + SemVer
+- **Release 标题与仓库名一致**（`utools-unotes vX.Y.Z`），**禁止用产品名 SourceNote**——README 标题也统一为 `# utools-unotes`（用户曾反馈页面又变成 sourcenote）；tag 用 `v` + SemVer
+- **release notes 文件不以 `#` 标题开头**：GitHub Release 页会同时显示 --title 与 notes 内容，文件内再写标题会出现版号/内容重复
 - git 身份：仓库级 `git config user.email`（当前 1902283142@qq.com）
 - 只改代码不涉及功能变更的推送（如 README/docs）不需要改版本号
 

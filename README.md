@@ -1,4 +1,4 @@
-# SourceNote（utools-unotes）
+# utools-unotes
 
 uTools 源笔记插件：以**学习对象**为载体（一本书 / 一篇论文 / 一门课程 / 一个 GitHub 项目…），用最低成本记录要点、用最快速度检索。源笔记是写主卡（Zettelkasten）之前的**跳板**——记录即沉淀，搜到即用。
 
