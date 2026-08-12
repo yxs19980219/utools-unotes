@@ -85,34 +85,32 @@ npm run ui-smoke  # 渲染层冒烟（47 断言，需 dev server + 系统 Edge/C
 
 ```
 src/
-├── services/            数据层（唯一 db 入口）
-│   ├── db.ts            utools.db 封装：_id 前缀分类、_rev 契约、类型守卫、
-│   │                    无 uTools 环境自动降级 MemoryDb（冒烟测试依赖）
-│   ├── search.ts        自研 tokenizer 全文搜索：type: 前缀 / #标签 / 裸词 AND、相关度
-│   └── tagNormalize.ts  标签归并：matchTag 精确归并、suggestTags 模糊联想、
-│                        findTagConflicts 改名冲突检测
-├── stores/              Zustand 状态（db 的内存投影，先 db 后内存）
-│   ├── ui.ts            视图 / 选中项 / 搜索态 / 编辑态 / 排序偏好 / lastBrowseView
-│   ├── objects.ts       对象域：钉住 / 归档互斥编排、级联删除编排
-│   ├── notes.ts         笔记域：实时保存 update、AC10 归属强校验
-│   ├── tags.ts          标签域：归并语义（resolveTagIds）、删除跨域引用清理
-│   ├── settings.ts      来源类型管理（内置锁定 + 自定义增删、引用计数）
-│   └── bootstrap.ts     启动全量加载（一次 allDocs 按守卫分区 hydrate，幂等）
-├── components/          视图层（列表 → 卡片流 → 全文 两级导航）
-│   ├── App.tsx          两栏骨架：侧边栏 + 内容区
-│   ├── ViewSwitcher.tsx 三视图分段控件
-│   ├── SidebarList.tsx  侧边栏列表：活跃对象 / 钉住标签 / 标签视图 / 归档视图
-│   ├── ContentHeader.tsx 内容区顶栏（语境化）
-│   ├── ContentArea.tsx  内容区路由（编辑态 > 笔记全文 > 搜索 > 对象详情 > 标签列表）
-│   ├── NoteCardList.tsx 全产品唯一列表形态（对象 / 标签 / 搜索三语境复用）
-│   ├── NoteView.tsx     笔记详情：进即编辑 + 500ms 实时保存（串行化防 _rev 冲突）
-│   ├── ObjectDetail.tsx 对象详情卡片流
-│   ├── SettingsView.tsx 设置页：来源类型管理 + 默认排序偏好
-│   ├── MarkdownView.tsx 只读 Markdown 渲染器
-│   └── Editor/          CodeMirror 即时渲染装饰器 + 快捷工具栏
-├── lib/                 工具（来源类型投影 / 对象生命周期操作 / markdown 正则）
-├── types.ts             schema 数据模型
-└── index.css            设计 Token（语义色 / 圆角 / 阴影）
+├── services/
+│   ├── db.ts
+│   ├── search.ts
+│   └── tagNormalize.ts
+├── stores/
+│   ├── ui.ts
+│   ├── objects.ts
+│   ├── notes.ts
+│   ├── tags.ts
+│   ├── settings.ts
+│   └── bootstrap.ts
+├── components/
+│   ├── App.tsx
+│   ├── ViewSwitcher.tsx
+│   ├── SidebarList.tsx
+│   ├── ContentHeader.tsx
+│   ├── ContentArea.tsx
+│   ├── NoteCardList.tsx
+│   ├── NoteView.tsx
+│   ├── ObjectDetail.tsx
+│   ├── SettingsView.tsx
+│   ├── MarkdownView.tsx
+│   └── Editor/
+├── lib/
+├── types.ts
+└── index.css
 ```
 
 ## 技术栈
