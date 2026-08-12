@@ -11,7 +11,8 @@
     "typecheck": "tsc -b",
     "smoke": "node scripts/smoke-data-layer.ts",
     "smoke:stores": "node scripts/smoke-stores.ts",
-    "smoke:decorations": "node scripts/smoke-decorations.ts"
+    "smoke:decorations": "node scripts/smoke-decorations.ts",
+    "ui-smoke": "node scripts/ui-smoke.mjs"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",
@@ -37,6 +38,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
+    "playwright-core": "^1.62.1",
     "shadcn": "^4.17.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",

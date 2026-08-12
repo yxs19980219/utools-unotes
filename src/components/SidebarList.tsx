@@ -26,6 +26,7 @@ import { useNotesStore } from '@/stores/notes'
 import { selectPinnedObjects, useObjectsStore } from '@/stores/objects'
 import { countNotesByTag, selectPinnedTags, useTagsStore } from '@/stores/tags'
 import { useUiStore } from '@/stores/ui'
+import { useShallow } from 'zustand/react/shallow'
 import type { Tag } from '@/types'
 
 /** 标签行（阶段 6：悬停 ⋯ 操作 + 选中高亮；首页钉住区与标签视图共用，交互一致） */
@@ -73,9 +74,11 @@ function ListSkeleton() {
 
 /** 首页：钉住对象 + 钉住标签（R7），点击联动 selectObject/selectTag */
 function HomeSidebarGroups() {
-  const loaded = useObjectsStore((s) => s.loaded) && useTagsStore((s) => s.loaded)
-  const pinnedObjects = useObjectsStore(selectPinnedObjects)
-  const pinnedTags = useTagsStore(selectPinnedTags)
+  const objectsLoaded = useObjectsStore((s) => s.loaded)
+  const tagsLoaded = useTagsStore((s) => s.loaded)
+  const loaded = objectsLoaded && tagsLoaded
+  const pinnedObjects = useObjectsStore(useShallow(selectPinnedObjects))
+  const pinnedTags = useTagsStore(useShallow(selectPinnedTags))
   const selectedObjectId = useUiStore((s) => s.selectedObjectId)
   const selectedTagId = useUiStore((s) => s.selectedTagId)
   const selectObject = useUiStore((s) => s.selectObject)

@@ -25,11 +25,13 @@ import { searchNotes, sortNotes, type SearchContext, type SearchResult } from '@
 import { selectNotesByTag, useNotesStore } from '@/stores/notes'
 import { useObjectsStore } from '@/stores/objects'
 import { useTagsStore } from '@/stores/tags'
+import { useShallow } from 'zustand/react/shallow'
+
 import { useUiStore } from '@/stores/ui'
 
 /** 标签跨对象笔记列表（来源筛选由 ContentHeader 写入 ui.sourceFilter，此处过滤） */
 function TagNotesList({ tagId }: { tagId: string }) {
-  const notes = useNotesStore((s) => selectNotesByTag(s, tagId))
+  const notes = useNotesStore(useShallow((s) => selectNotesByTag(s, tagId)))
   const objects = useObjectsStore((s) => s.objects)
   const sourceFilter = useUiStore((s) => s.sourceFilter)
 

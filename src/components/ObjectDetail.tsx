@@ -30,11 +30,13 @@ import { sourceTypeLabel, useSourceTypes } from '@/lib/sourceTypes'
 import { selectNotesByObject, useNotesStore } from '@/stores/notes'
 import { useObjectsStore } from '@/stores/objects'
 import { useTagsStore } from '@/stores/tags'
+import { useShallow } from 'zustand/react/shallow'
+
 import { useUiStore } from '@/stores/ui'
 
 export default function ObjectDetail({ objectId }: { objectId: string }) {
   const object = useObjectsStore((s) => s.objects.find((o) => o._id === objectId))
-  const notes = useNotesStore((s) => selectNotesByObject(s, objectId))
+  const notes = useNotesStore(useShallow((s) => selectNotesByObject(s, objectId)))
   const tags = useTagsStore((s) => s.tags)
   const sourceTypes = useSourceTypes()
   const togglePinned = useObjectsStore((s) => s.togglePinned)

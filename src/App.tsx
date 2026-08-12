@@ -5,6 +5,7 @@ import ContentHeader from '@/components/ContentHeader'
 import SidebarList from '@/components/SidebarList'
 import ViewSwitcher from '@/components/ViewSwitcher'
 import { Toaster } from '@/components/ui/sonner'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { bootstrapStores } from '@/stores/bootstrap'
 import { useUiStore } from '@/stores/ui'
 
@@ -52,7 +53,8 @@ export default function App() {
   }, [])
 
   return (
-    <div className="flex h-screen min-w-0 overflow-hidden bg-background">
+    <TooltipProvider delayDuration={200}>
+      <div className="flex h-screen min-w-0 overflow-hidden bg-background">
       {/* 左侧边栏 */}
       <aside className="flex w-48 shrink-0 flex-col border-r border-border">
         <div className="p-2 pb-1.5">
@@ -70,6 +72,7 @@ export default function App() {
       </main>
 
       <Toaster />
-    </div>
+      </div>
+    </TooltipProvider>
   )
 }
