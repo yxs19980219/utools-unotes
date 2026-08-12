@@ -83,3 +83,30 @@ npm run smoke:decorations# node scripts/smoke-decorations.ts（编辑器装饰�
 3. **短路条件 Hook**：`const a = useX() && useY()` 在 `useX()` 返回 false 时跳过 `useY`，状态翻转后 Hook 顺序错位崩溃。**禁止用 `&&`/`||`/三元连接多个 Hook 调用**，一律拆开再合并。
 
 **渲染层验证标准**：涉及组件/布局/编辑器改动的任务，必须跑 `npm run ui-smoke`（playwright-core + 系统 Edge 无头，走 MemoryDb 验证对象→笔记→钉住→首页核心闭环 + 无 console/pageerror）。Dev server 需先启动（5173）。
+
+---
+
+## Release Process（发布流程，2026-08 确立）
+
+uTools 插件发布 = **上传 dist 文件夹 / zip 到 uTools 开发者平台**（无需 upx 打包）。
+
+发版操作序列（版本号遵循 SemVer：PATCH=fix / MINOR=feat / MAJOR=破坏性变更）：
+
+```bash
+# 1. 验证：typecheck + 全部 smoke + build 全绿
+npm run typecheck && npm run smoke && npm run smoke:stores && npm run smoke:decorations && npm run build
+# 2. 同步 package.json version → commit → push
+# 3. 打附注 tag 并推送（tag 不随分支自动推）
+git tag -a vX.Y.Z -m "<说明>" && git push origin vX.Y.Z
+# 4. 打包 dist（zip 结构要求 plugin.json/logo/preload/assets 位于根，uTools 导入即用）
+cd dist && powershell -Command "Compress-Archive -Path '*' -DestinationPath '../SourceNote-vX.Y.Z.zip' -Force" && cd ..
+# 5. 创建 GitHub Release（描述用 --notes-file，附 zip 资产）
+gh release create vX.Y.Z SourceNote-vX.Y.Z.zip --title "<name>" --notes-file <file>
+# 6. 上架：uTools 开发者平台上传 zip
+```
+
+约定：
+- **zip 不进仓库**（.gitignore 已含 `SourceNote-*.zip`），用完即删，需要时从 Release 下载
+- Release 标题与仓库名一致（当前 `utools-unotes`）；tag 用 `v` + SemVer
+- git 身份：仓库级 `git config user.email`（当前 1902283142@qq.com）
+- 只改代码不涉及功能变更的推送（如 README/docs）不需要改版本号
