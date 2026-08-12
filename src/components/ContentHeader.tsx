@@ -296,6 +296,7 @@ export default function ContentHeader() {
   const title = useHeaderTitle()
   const editing = useUiStore((s) => s.editing)
   const searchActive = useUiStore((s) => s.search.active)
+  const activeNoteId = useUiStore((s) => s.activeNoteId)
   const selectedObjectId = useUiStore((s) => s.selectedObjectId)
   const selectedTagId = useUiStore((s) => s.selectedTagId)
   const sort = useUiStore((s) => s.sort)
@@ -303,6 +304,10 @@ export default function ContentHeader() {
   const setSort = useUiStore((s) => s.setSort)
   const setSourceFilter = useUiStore((s) => s.setSourceFilter)
   const sourceTypes = useSourceTypes()
+
+  // 笔记详情沉浸模式（三期用户反馈）：打开笔记后顶部对象/搜索/标签栏全部隐藏，
+  // NoteView 自己的顶栏（返回+标题+标签+时间）成为唯一顶栏；返回后恢复原栏
+  if (activeNoteId) return null
 
   // 来源筛选：标签跨对象列表语境与搜索态均显示（搜索态与 type: 语法叠加，R17）
   const showSourceFilter = selectedTagId !== null || searchActive

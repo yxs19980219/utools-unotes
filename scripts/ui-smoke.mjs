@@ -247,6 +247,9 @@ try {
     .innerText()
   ok('AC9：笔记详情顶栏无对象名',
     !noteHeaderText.includes('UI 冒烟测试对象') && noteHeaderText.includes('冒烟笔记'))
+  // 三期反馈：进入笔记后顶部对象栏整体隐藏（ContentHeader 不渲染）
+  ok('进入笔记后对象栏隐藏（无归档按钮）',
+    (await page.getByRole('button', { name: '归档对象' }).count()) === 0)
   await page.getByRole('button', { name: /写正文/ }).click()
   await page.waitForTimeout(400)
   await page.locator('.cm-content').click()
