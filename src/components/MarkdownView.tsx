@@ -215,7 +215,7 @@ export default function MarkdownView({
   const blocks = useMemo(() => parseBlocks(content), [content])
 
   return (
-    <div className={cn('flex flex-col gap-1.5 text-sm leading-relaxed', className)}>
+    <div className={cn('flex flex-col gap-1.5 text-[0.9375rem] leading-relaxed', className)}>
       {blocks.map((b, i) => {
         const key = `b${i}`
         switch (b.kind) {
