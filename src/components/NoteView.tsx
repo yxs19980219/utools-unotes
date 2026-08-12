@@ -30,8 +30,8 @@ import { useObjectsStore } from '@/stores/objects'
 import { useTagsStore } from '@/stores/tags'
 import { useUiStore } from '@/stores/ui'
 
-/** 实时保存防抖（ms）：打字停顿间隙不写盘，300ms 平衡实时性与写盘频率 */
-const SAVE_DEBOUNCE_MS = 300
+/** 实时保存防抖（ms）：打字停顿间隙不写盘，500ms 平衡实时性与写盘频率（本地 db 几乎不会出错，无需失败重试） */
+const SAVE_DEBOUNCE_MS = 500
 
 export default function NoteView({ noteId }: { noteId: string }) {
   const note = useNotesStore((s) => s.notes.find((n) => n._id === noteId))
