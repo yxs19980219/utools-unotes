@@ -17,6 +17,9 @@ import type { Prefs, SearchSort } from '../types.ts'
 /** 顶级视图（R5 分段控件）；archived/settings 为二期，UI 置灰 */
 export type View = 'home' | 'tags' | 'archived' | 'settings'
 
+/** 浏览视图（设置视图时侧边栏回显进入前的列表，R3） */
+export type BrowseView = Exclude<View, 'settings'>
+
 /** 搜索态（阶段 7 接入 setSubInput 后由服务层填充） */
 export interface SearchState {
   active: boolean
@@ -46,6 +49,8 @@ interface UiState {
   preSearchSort: SearchSort
   /** 当前来源类型筛选（'all' = 不过滤；仅跨对象列表语境生效） */
   sourceFilter: string
+  /** 浏览视图记录（R3：进入设置时保留，设置视图侧边栏回显该列表） */
+  lastBrowseView: BrowseView
 
   /** 偏好默认排序应用（R9：启动时 bootstrap 调用 / 设置页保存时调用） */
   applyPrefs(prefs: Prefs): void
@@ -76,6 +81,7 @@ export const useUiStore = create<UiState>()((set, get) => ({
   sort: 'updated',
   preSearchSort: 'updated',
   sourceFilter: 'all',
+  lastBrowseView: 'home',
 
   setSort: (sort) => set({ sort }),
   setSourceFilter: (sourceFilter) => set({ sourceFilter }),
@@ -90,13 +96,15 @@ export const useUiStore = create<UiState>()((set, get) => ({
   setView: (view) => {
     // 切视图退出搜索态（R5：每视图只显示自己的内容）
     get().setSearch(false)
-    set({
+    set((s) => ({
       view,
       selectedObjectId: null,
       selectedTagId: null,
       activeNoteId: null,
       editing: null,
-    })
+      // R3：浏览视图才记录；进入设置时保留上一个浏览视图
+      lastBrowseView: view !== 'settings' ? view : s.lastBrowseView,
+    }))
   },
 
   selectObject: (objectId) => {

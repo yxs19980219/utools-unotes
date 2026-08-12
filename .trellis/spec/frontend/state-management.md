@@ -19,6 +19,7 @@
 - **启动全量加载**：`bootstrapStores()`（`src/stores/bootstrap.ts:17-31`）一次 `allDocs()` 全量，按类型守卫分区 `hydrate` 三个域；in-flight 共享同一 Promise（幂等），完成后再次调用会重新拉取（uTools 重新进入插件可刷新外部同步数据）
 - **表单草稿是**组件本地 state**，不进全局 store（store 只记 `editing: {kind, id}`）；搜索查询文本在 ui store（子输入框驱动，跨组件需要）
 - **无未保存确认机制（08-12 起）**：实时保存时代，`ui.ts` 无 pendingDirty/requestRoute；路由切换（selectObject/selectTag/setView/closeNote/startEditing）直接执行、不弹确认框；localStorage 草稿（`sn:draft:*`）已废弃，不得新增依赖
+- **设置视图侧边栏回显（08-12 起）**：设置入口是侧边栏底部齿轮（非视图 Tab）；`ui.lastBrowseView` 记录进入设置前的浏览视图，SidebarList 在 settings 时按它渲染列表；对象级操作（归档/编辑/删除/恢复）全部收敛到侧边栏对象行右键菜单，顶栏只留高频操作（排序/ℹ 元数据/新笔记）
 - 无 server state 概念：本地 db 单机，无缓存层/无失效策略
 
 ---

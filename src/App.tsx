@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import ContentArea from '@/components/ContentArea'
 import ContentHeader from '@/components/ContentHeader'
 import SidebarList from '@/components/SidebarList'
+import SidebarSettingsButton from '@/components/SidebarSettingsButton'
 import ViewSwitcher from '@/components/ViewSwitcher'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -56,11 +57,13 @@ export default function App() {
     <TooltipProvider delayDuration={200}>
       <div className="flex h-screen min-w-0 overflow-hidden bg-background">
       {/* 左侧边栏（浅灰 bg-sidebar vs 内容区纯白，色阶区分无分割线） */}
-      <aside className="flex w-48 shrink-0 flex-col bg-sidebar">
-        <div className="p-2 pb-1.5">
+      <aside className="flex w-44 shrink-0 flex-col bg-sidebar">
+        {/* 视图栏：与内容区顶栏 h-11 顶部平齐（R6） */}
+        <div className="flex h-11 shrink-0 items-center px-2">
           <ViewSwitcher />
         </div>
         <SidebarList />
+        <SidebarSettingsButton />
       </aside>
 
       {/* 右侧内容区 */}

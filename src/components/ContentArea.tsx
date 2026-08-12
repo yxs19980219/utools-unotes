@@ -10,7 +10,7 @@ import { useMemo } from 'react'
 import { ArchiveIcon, BookOpenIcon, SearchIcon, TagIcon } from 'lucide-react'
 
 import NoteCardList from '@/components/NoteCardList'
-import NoteForm from '@/components/NoteForm'
+import NoteFormDialog from '@/components/NoteFormDialog'
 import NoteView from '@/components/NoteView'
 import ObjectDetail from '@/components/ObjectDetail'
 import ObjectForm from '@/components/ObjectForm'
@@ -128,9 +128,9 @@ export default function ContentArea() {
   const selectedTagId = useUiStore((s) => s.selectedTagId)
   const activeNoteId = useUiStore((s) => s.activeNoteId)
 
-  // 编辑态：全内容区表单（800×600 下弹窗空间不足，design 交互细节 5）
+  // 编辑态：笔记 = Dialog 小窗（NoteFormDialog）；对象 = 全内容区表单（ObjectForm）
   if (editing) {
-    return editing.kind === 'object' ? <ObjectForm /> : <NoteForm />
+    return editing.kind === 'object' ? <ObjectForm /> : <NoteFormDialog />
   }
 
   // 笔记全文（R6 第二种内容形态）——优先于搜索态：搜索态点卡片进全文（AC9 只读），返回后回搜索结果

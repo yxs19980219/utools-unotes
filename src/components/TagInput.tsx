@@ -140,6 +140,9 @@ export default function TagInput({
             onChange={(e) => {
               setQuery(e.target.value)
               setActive(0)
+              // 兜底重开（08-12 bug 修复）：点击聚焦时 Popover 会被 DismissableLayer
+              // 同点击序列误关（radix 时序），输入字符时强制重开保证联想可用
+              setOpen(true)
             }}
             onFocus={() => setOpen(true)}
             onKeyDown={(e) => {

@@ -114,32 +114,32 @@ export default function NoteForm() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-3 p-4">
-          {/* 兜底对象选择（仅无上下文新建时出现，正常路径隐藏） */}
-          {needObjectPick && (
-            <div className="flex flex-col gap-1.5">
-              <FieldLabel htmlFor="note-object">归属对象</FieldLabel>
-              <Select value={objectId} onValueChange={setObjectId}>
-                <SelectTrigger id="note-object" aria-label="归属对象" className="w-full">
-                  <SelectValue placeholder="选择归属对象" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeObjects.map((o) => (
-                    <SelectItem key={o._id} value={o._id}>
-                      {o.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {noObject && (
-                <p className="text-xs text-destructive">
-                  必须选择归属对象才能保存（新建对象后再创建笔记）
-                </p>
-              )}
-            </div>
-          )}
+    <>
+      {/* 字段区（Dialog 内容，08-12：笔记表单小窗化） */}
+      <div className="flex flex-col gap-3">
+        {/* 兜底对象选择（仅无上下文新建时出现，正常路径隐藏） */}
+        {needObjectPick && (
+          <div className="flex flex-col gap-1.5">
+            <FieldLabel htmlFor="note-object">归属对象</FieldLabel>
+            <Select value={objectId} onValueChange={setObjectId}>
+              <SelectTrigger id="note-object" aria-label="归属对象" className="w-full">
+                <SelectValue placeholder="选择归属对象" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeObjects.map((o) => (
+                  <SelectItem key={o._id} value={o._id}>
+                    {o.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {noObject && (
+              <p className="text-xs text-destructive">
+                必须选择归属对象才能保存（新建对象后再创建笔记）
+              </p>
+            )}
+          </div>
+        )}
 
           <div className="flex flex-col gap-1.5">
             <FieldLabel htmlFor="note-title">标题（可留空）</FieldLabel>
@@ -167,14 +167,10 @@ export default function NoteForm() {
               联想补全匹配标签名与别名；回车直接创建新标签
             </p>
           </div>
-        </div>
       </div>
 
-      {/* 底部操作 */}
-      <div className="flex shrink-0 items-center justify-end gap-2 bg-muted/50 px-3 py-2">
-        <span className="mr-auto text-xs text-muted-foreground">
-          保存后点击笔记卡片，进入详情写正文
-        </span>
+      {/* 底部操作（Dialog 内，08-12） */}
+      <div className="mt-4 flex shrink-0 items-center justify-end gap-2">
         <Button variant="outline" size="sm" onClick={handleCancel} disabled={saving}>
           取消
         </Button>
@@ -182,6 +178,6 @@ export default function NoteForm() {
           {isNew ? '保存' : '更新'}
         </Button>
       </div>
-    </div>
+    </>
   )
 }

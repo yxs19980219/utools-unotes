@@ -17,7 +17,6 @@ import {
   PencilIcon,
   PinIcon,
   PlusIcon,
-  SettingsIcon,
   TagIcon,
   Trash2Icon,
 } from 'lucide-react'
@@ -412,25 +411,15 @@ function ArchivedSidebarList() {
 }
 
 export default function SidebarList() {
-  const view = useUiStore((s) => s.view)
+  // R3：设置视图时侧边栏回显进入设置前的浏览视图列表（非空）
+  const browseView = useUiStore((s) => (s.view === 'settings' ? s.lastBrowseView : s.view))
 
   return (
     <ScrollArea className="min-h-0 flex-1">
       <div className="flex min-h-full flex-col p-2">
-        {view === 'home' && <HomeSidebarGroups />}
-        {view === 'tags' && <TagsSidebarList />}
-        {view === 'archived' && <ArchivedSidebarList />}
-        {view === 'settings' && (
-          <Empty className="gap-2 p-3">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <SettingsIcon />
-              </EmptyMedia>
-              <EmptyTitle>来源类型与偏好</EmptyTitle>
-              <EmptyDescription>请在右侧内容区管理来源类型与偏好设置</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )}
+        {browseView === 'home' && <HomeSidebarGroups />}
+        {browseView === 'tags' && <TagsSidebarList />}
+        {browseView === 'archived' && <ArchivedSidebarList />}
       </div>
     </ScrollArea>
   )

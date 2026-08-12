@@ -51,8 +51,8 @@
 --chart-4: oklch(0.8054 0 0);
   --chart-5: #e5e5e5;
 --chart-5: oklch(0.9234 0 0);
-  --sidebar: #fafafa;
---sidebar: oklch(0.9848 0 0);
+  --sidebar: #f0f0f0;
+--sidebar: oklch(0.9389 0 0);
   --sidebar-foreground: #333333;
 --sidebar-foreground: oklch(0.3211 0 0);
   --sidebar-primary: #e0e0e0;

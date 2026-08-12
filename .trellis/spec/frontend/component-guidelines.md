@@ -62,6 +62,8 @@
 
 ## Common Mistakes
 
+- **radix Popover 用 onFocus 打开会被同点击序列误关（08-12 实测）**：点击输入框时 focus 触发 `setOpen(true)`，但 DismissableLayer 把同一点击序列的后续事件判为外部点击 → Popover 立即关闭。现象：标签联想永不显示（TagInput）。修复：`onChange` 时兜底 `setOpen(true)`（输入字符即重开）；不要依赖 onFocus 单独打开
+
 - **组件直接碰 db**（红线）：数据必须经 store → services/db.ts。曾出现过在组件里 import services 的倾向，已被分层规则拦下；唯一例外是 `lib/sourceTypes.ts` 的只读缓存 hook
 - **每卡自建投影 Map**：`NoteCardList.tsx:67` 的 `tagById` 在列表级构建一次传给卡片，禁止每张卡内 `tags.find()`（O(N²)）
 - **复制列表形态**：AC3 要求 1 条与 20 条渲染一致，新增列表场景必须先问"能否复用 NoteCardList"，禁止另写一套卡片
