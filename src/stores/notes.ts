@@ -14,7 +14,7 @@ import {
   listNotes,
   updateNote as dbUpdateNote,
 } from '../services/db.ts'
-import type { Note, NoteInput } from '../types.ts'
+import type { Note, NoteInput, NoteObject } from '../types.ts'
 
 interface NotesState {
   /** 全量笔记（含归档对象的笔记，R13：归档是状态不是隔离区） */
@@ -105,4 +105,17 @@ export function selectNotesByObject(s: NotesState, objectId: string): Note[] {
 /** 挂某标签的笔记（跨对象，R8 标签视图内容区） */
 export function selectNotesByTag(s: NotesState, tagId: string): Note[] {
   return s.notes.filter((n) => n.tags.includes(tagId))
+}
+
+/**
+ * 来源类型筛选（R17 AND 语义；标签跨对象列表/搜索态共用）。
+ * sourceFilter === 'all' 时不过滤；objectById 缺失（对象已删）的笔记保留不过滤。
+ */
+export function filterNotesBySource(
+  notes: Note[],
+  objectById: Map<string, NoteObject>,
+  sourceFilter: string,
+): Note[] {
+  if (sourceFilter === 'all') return notes
+  return notes.filter((n) => objectById.get(n.objectId)?.sourceType === sourceFilter)
 }

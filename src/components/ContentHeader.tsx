@@ -46,7 +46,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { sourceTypeLabel, useSourceTypes } from '@/lib/sourceTypes'
-import { selectNotesByObject, useNotesStore } from '@/stores/notes'
+import { filterNotesBySource, selectNotesByObject, selectNotesByTag, useNotesStore } from '@/stores/notes'
 import { useObjectsStore } from '@/stores/objects'
 import { useTagsStore } from '@/stores/tags'
 import { useUiStore } from '@/stores/ui'
@@ -203,6 +203,15 @@ export default function ContentHeader() {
   const setSourceFilter = useUiStore((s) => s.setSourceFilter)
   const sourceTypes = useSourceTypes()
 
+  // 标签语境笔记计数（与 TagNotesList 同源：来源筛选后数量，随筛选联动）
+  const tagNotes = useNotesStore(useShallow((s) => (selectedTagId ? selectNotesByTag(s, selectedTagId) : [])))
+  const allObjects = useObjectsStore((s) => s.objects)
+  const tagNoteCount = useMemo(() => {
+    if (!selectedTagId) return 0
+    const objectById = new Map(allObjects.map((o) => [o._id, o]))
+    return filterNotesBySource(tagNotes, objectById, sourceFilter).length
+  }, [selectedTagId, tagNotes, allObjects, sourceFilter])
+
   // 笔记详情沉浸模式（三期用户反馈）：打开笔记后顶部对象/搜索/标签栏全部隐藏，
   // NoteView 自己的顶栏（返回+标题+标签+时间）成为唯一顶栏；返回后恢复原栏
   if (activeNoteId) return null
@@ -236,6 +245,11 @@ export default function ContentHeader() {
       <h1 className="min-w-0 flex-1 truncate text-base font-semibold" title={title}>
         {title}
       </h1>
+
+      {/* 标签语境笔记计数（与对象详情顶栏「笔记 · N」同理；搜索态不显示） */}
+      {selectedTagId !== null && !searchActive && (
+        <span className="shrink-0 text-xs text-muted-foreground">笔记 · {tagNoteCount}</span>
+      )}
 
       <div className="flex shrink-0 items-center gap-1.5">
         {/* 排序菜单（R17；搜索态/标签语境） */}

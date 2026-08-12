@@ -86,12 +86,13 @@ function NoteCard({ note, object, tagById, sourceLabel, crossObject }: NoteCardP
       onKeyDown={(e) => {
         if (e.key === 'Enter') openNote(note._id)
       }}
-      className="group flex cursor-pointer flex-col gap-1 rounded-lg border border-transparent bg-muted p-2.5 transition-colors hover:bg-accent hover:shadow-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:border-border dark:bg-card dark:hover:bg-accent/50 dark:hover:shadow-none"
+      className="group flex cursor-pointer flex-col gap-1 rounded-lg border border-transparent bg-muted p-2.5 hover:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:border-border dark:bg-card dark:hover:bg-accent/50"
     >
       {/* 标题行 + 悬停操作 */}
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{note.title}</span>
-        <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+        {/* 悬停操作：按钮常占位（opacity 切换，无过渡动画、不挤压标题布局） */}
+        <span className="pointer-events-none flex shrink-0 items-center gap-0.5 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100">
           {!readonly && (
             <Button
               variant="ghost"

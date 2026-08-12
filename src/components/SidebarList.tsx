@@ -22,7 +22,7 @@ import {
 } from 'lucide-react'
 
 import SidebarRow from '@/components/SidebarRow'
-import TagRowActions from '@/components/TagRowActions'
+import TagRowActions, { TagContextMenu } from '@/components/TagRowActions'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,35 +65,37 @@ import { useUiStore } from '@/stores/ui'
 import { useShallow } from 'zustand/react/shallow'
 import type { NoteObject, Tag } from '@/types'
 
-/** 标签行（悬停 ⋯ 操作 + 选中高亮；首页钉住区与标签视图共用，交互一致） */
+/** 标签行（首页钉住区 = 右键菜单，与对象行交互一致；标签视图 = 悬停 ⋯ 下拉） */
 function TagSidebarRow({
   tag,
   badge,
   active,
   onClick,
+  menu = 'dots',
 }: {
   tag: Tag
   badge?: number
   active: boolean
   onClick: () => void
+  /** 操作入口：dots = ⋯ 下拉（标签视图）；context = 右键菜单（钉住区，与活跃对象行一致） */
+  menu?: 'dots' | 'context'
 }) {
-  return (
-    <SidebarRow
-      icon={<TagIcon />}
-      label={tag.name}
-      badge={badge}
-      active={active}
-      onClick={onClick}
-      actions={<TagRowActions tagId={tag._id} />}
-    />
-  )
+  const rowProps = { icon: <TagIcon />, label: tag.name, badge, active, onClick }
+  if (menu === 'context') {
+    return (
+      <TagContextMenu tagId={tag._id}>
+        <SidebarRow {...rowProps} />
+      </TagContextMenu>
+    )
+  }
+  return <SidebarRow {...rowProps} actions={<TagRowActions tagId={tag._id} />} />
 }
 
 /** 分组小标题（支持右侧 action，如「活跃对象」的 + 新建按钮）；顶部无内距，间距由 grid gap 统一承担（对称） */
 function SectionLabel({ children, action }: { children: string; action?: ReactNode }) {
   return (
     <div className="flex items-center justify-between px-1.5 pb-1">
-      <span className="text-xs font-medium text-muted-foreground/80">{children}</span>
+      <span className="text-sm font-medium text-muted-foreground/80">{children}</span>
       {action}
     </div>
   )
@@ -317,6 +319,7 @@ function HomeSidebarGroups() {
             <TagSidebarRow
               key={t._id}
               tag={t}
+              menu="context"
               active={selectedTagId === t._id}
               onClick={() => selectTag(t._id)}
             />
@@ -361,6 +364,7 @@ function TagsSidebarList() {
           key={t._id}
           tag={t}
           badge={counts.get(t._id) ?? 0}
+          menu="dots"
           active={selectedTagId === t._id}
           onClick={() => selectTag(t._id)}
         />

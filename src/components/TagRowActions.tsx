@@ -26,6 +26,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
+import {
   Dialog,
   DialogClose,
   DialogContent,
@@ -46,10 +53,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { findTagConflicts } from '@/services/tagNormalize'
 import { useTagsStore } from '@/stores/tags'
 import { useUiStore } from '@/stores/ui'
+import type { ReactNode } from 'react'
 import type { Tag } from '@/types'
 
 /** 编辑标签表单（Dialog 内容；Dialog 关闭即 unmount，打开时重新以最新 tag 初始化） */
-function TagEditDialog({
+export function TagEditDialog({
   tag,
   onOpenChange,
 }: {
@@ -164,21 +172,17 @@ function TagEditDialog({
   )
 }
 
-export default function TagRowActions({ tagId }: { tagId: string }) {
-  const tag = useTagsStore((s) => s.tags.find((t) => t._id === tagId))
-  const togglePinned = useTagsStore((s) => s.togglePinned)
+/** 删除标签确认（⋯ 下拉与右键菜单共用：受控 AlertDialog + 删除编排） */
+function useTagDelete(tagId: string, tagName: string) {
   const remove = useTagsStore((s) => s.remove)
-  const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
-
-  if (!tag) return null
 
   const handleDelete = async () => {
     setDeleting(true)
     try {
       await remove(tagId)
-      toast.success(`已删除标签「${tag.name}」，并清理所有笔记/对象上的引用`)
+      toast.success(`已删除标签「${tagName}」，并清理所有笔记/对象上的引用`)
       // 删除当前选中标签 → 清内容区（避免残留空列表态）
       if (useUiStore.getState().selectedTagId === tagId) {
         useUiStore.getState().selectTag(null)
@@ -190,6 +194,17 @@ export default function TagRowActions({ tagId }: { tagId: string }) {
       setDeleting(false)
     }
   }
+
+  return { deleteOpen, setDeleteOpen, deleting, handleDelete }
+}
+
+export default function TagRowActions({ tagId }: { tagId: string }) {
+  const tag = useTagsStore((s) => s.tags.find((t) => t._id === tagId))
+  const togglePinned = useTagsStore((s) => s.togglePinned)
+  const [editOpen, setEditOpen] = useState(false)
+  const { deleteOpen, setDeleteOpen, deleting, handleDelete } = useTagDelete(tagId, tag?.name ?? '')
+
+  if (!tag) return null
 
   return (
     <>
@@ -228,6 +243,69 @@ export default function TagRowActions({ tagId }: { tagId: string }) {
       </Dialog>
 
       {/* 删除确认：提示将清理所有笔记/对象上的引用（走 tags.remove 编排） */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除标签「{tag.name}」？</AlertDialogTitle>
+            <AlertDialogDescription>
+              将从所有笔记与对象中移除该标签引用，该操作不可恢复。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={() => void handleDelete()}
+            >
+              {deleting ? '删除中…' : '删除'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
+/**
+ * 钉住标签行右键菜单（与活跃对象行交互一致：右键弹出；菜单项与 ⋯ 下拉相同）。
+ * 使用受控 Dialog/AlertDialog（state 提升，避免 ContextMenu 与 Dialog 焦点冲突）。
+ */
+export function TagContextMenu({ tagId, children }: { tagId: string; children: ReactNode }) {
+  const tag = useTagsStore((s) => s.tags.find((t) => t._id === tagId))
+  const togglePinned = useTagsStore((s) => s.togglePinned)
+  const [editOpen, setEditOpen] = useState(false)
+  const { deleteOpen, setDeleteOpen, deleting, handleDelete } = useTagDelete(tagId, tag?.name ?? '')
+
+  if (!tag) return null
+
+  return (
+    <>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+        <ContextMenuContent className="min-w-36">
+          <ContextMenuItem onSelect={() => setEditOpen(true)}>
+            <PencilIcon data-icon />
+            编辑别名
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => void togglePinned(tag._id)}>
+            <PinIcon data-icon className={tag.pinned ? 'fill-current' : ''} />
+            {tag.pinned ? '取消钉住' : '钉住'}
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem variant="destructive" onSelect={() => setDeleteOpen(true)}>
+            <Trash2Icon data-icon />
+            删除标签
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+
+      {/* 编辑别名（与 ⋯ 下拉共用表单） */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <TagEditDialog tag={tag} onOpenChange={setEditOpen} />
+      </Dialog>
+
+      {/* 删除确认（与 ⋯ 下拉共用编排） */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

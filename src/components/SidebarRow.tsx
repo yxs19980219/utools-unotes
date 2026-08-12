@@ -56,9 +56,10 @@ export default function SidebarRow({
         }
       }}
       className={cn(
-        'group flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 text-sm transition-colors data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground',
+        'group flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 text-sm transition-colors',
         interactive && 'cursor-pointer outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
-        !active && 'hover:bg-muted',
+        // 悬停：accent（原选中色，比 muted 明显）；选中：比悬停更深的灰（bg-border），层级清晰且不喧宾夺主
+        active ? 'bg-border text-foreground' : 'hover:bg-accent hover:text-accent-foreground',
         muted && !active && 'text-muted-foreground',
         className,
       )}
@@ -66,7 +67,7 @@ export default function SidebarRow({
       {icon ? (
         <span
           data-icon
-          className="shrink-0 text-muted-foreground [&_svg]:size-3.5 group-data-[selected=true]:text-accent-foreground"
+          className="shrink-0 text-muted-foreground [&_svg]:size-3.5"
         >
           {icon}
         </span>

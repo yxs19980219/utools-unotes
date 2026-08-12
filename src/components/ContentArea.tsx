@@ -23,7 +23,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { searchNotes, sortNotes, type SearchContext, type SearchResult } from '@/services/search'
-import { selectNotesByTag, useNotesStore } from '@/stores/notes'
+import { filterNotesBySource, selectNotesByTag, useNotesStore } from '@/stores/notes'
 import { useObjectsStore } from '@/stores/objects'
 import { useTagsStore } from '@/stores/tags'
 import { useShallow } from 'zustand/react/shallow'
@@ -37,18 +37,13 @@ function TagNotesList({ tagId }: { tagId: string }) {
   const sourceFilter = useUiStore((s) => s.sourceFilter)
 
   const objectById = useMemo(() => new Map(objects.map((o) => [o._id, o])), [objects])
-  const filtered = useMemo(() => {
-    if (sourceFilter === 'all') return notes
-    return notes.filter((n) => objectById.get(n.objectId)?.sourceType === sourceFilter)
-  }, [notes, sourceFilter, objectById])
+  const filtered = useMemo(
+    () => filterNotesBySource(notes, objectById, sourceFilter),
+    [notes, sourceFilter, objectById],
+  )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 px-3 py-1.5">
-        <span className="text-xs text-muted-foreground">
-          跨对象笔记 · {filtered.length}
-        </span>
-      </div>
       <NoteCardList notes={filtered} crossObject />
     </div>
   )
