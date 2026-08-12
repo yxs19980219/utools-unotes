@@ -58,10 +58,10 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   /* 非光标行标题/列表标记：完全收起（display:none 不占位）→ 内容顶格展示（Obsidian 折叠标记同款） */
   '.sn-md-hidden': { display: 'none' },
   /* 标题整行样式（字号/字重随级别，与 MarkdownView 只读渲染对齐） */
-  '.sn-md-h1': { fontSize: '1rem', fontWeight: '600' },
-  '.sn-md-h2': { fontSize: '0.95rem', fontWeight: '600' },
-  '.sn-md-h3': { fontSize: '0.875rem', fontWeight: '600' },
-  '.sn-md-h4': { fontSize: '0.875rem', fontWeight: '500', color: 'var(--muted-foreground)' },
+  '.sn-md-h1': { fontSize: '1.4rem', fontWeight: '700', lineHeight: '1.3' },
+  '.sn-md-h2': { fontSize: '1.2rem', fontWeight: '650', lineHeight: '1.3' },
+  '.sn-md-h3': { fontSize: '1.05rem', fontWeight: '600', lineHeight: '1.4' },
+  '.sn-md-h4': { fontSize: '0.95rem', fontWeight: '600', color: 'var(--muted-foreground)', lineHeight: '1.4' },
   '.sn-md-bold': { fontWeight: '600' },
   '.sn-md-italic': { fontStyle: 'italic' },
   '.sn-md-code': {
@@ -197,8 +197,8 @@ const HR_RE = /^\s*(?:---|\*\*\*)\s*$/
 /** 引用：> 或 > 后接一空格 */
 const QUOTE_RE = /^>\s?/
 /** 列表标记（ul: 短横线/星号/加号，ol: 1. / 1)）：捕获「缩进 + 标记 + 空白」 */
-const LIST_MARKER_RE = /^(\s*(?:[-*+]|\d+[.)])\s+)/
-/** 无序标记（-、*、+）——替换显示为 • */
+const LIST_MARKER_RE = /^(\s*)([-*+]|\d+[.)])(\s+)/
+/** 无序标记（-、*、+）——替换显示为 •（仅替换标记+空白，保留缩进） */
 const UL_MARKER_RE = /^\s*[-*+]\s+/
 /** 任务列表：列表标记 + [ ]/[x] */
 const TASK_RE = /^(\s*(?:[-*+]|\d+[.)])\s+)\[([ xX])\]/
@@ -337,14 +337,15 @@ export function buildDecorations(state: EditorState): DecorationSet {
       continue
     }
 
-    // 普通列表：无序标记替换为 •（显示），有序标记淡色保留
+    // 普通列表：无序标记替换为 •（显示），有序标记淡色保留；缩进始终保留（嵌套列表）
     const list = LIST_MARKER_RE.exec(text)
     if (list) {
-      const markerLen = list[1].length
+      const indentLen = list[1].length
+      const markerLen = indentLen + list[2].length + list[3].length
       if (UL_MARKER_RE.test(text)) {
-        builder.add(from, from + markerLen, Decoration.replace({ widget: new BulletWidget() }))
+        builder.add(from + indentLen, from + markerLen, Decoration.replace({ widget: new BulletWidget() }))
       } else {
-        builder.add(from, from + markerLen, dimMark)
+        builder.add(from + indentLen, from + markerLen, dimMark)
       }
       scanInline(builder, from + markerLen, text.slice(markerLen))
       continue

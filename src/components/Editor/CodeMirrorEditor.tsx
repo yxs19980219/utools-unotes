@@ -14,6 +14,7 @@
  */
 import { useMemo, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
+import { indentWithTab } from '@codemirror/commands'
 import type { BasicSetupOptions } from '@uiw/codemirror-extensions-basic-setup'
 import { markdown } from '@codemirror/lang-markdown'
 import { keymap } from '@codemirror/view'
@@ -60,6 +61,8 @@ export default function CodeMirrorEditor({
       markdown(),
       markdownDecorationExtension,
       keymap.of([
+        // Tab 缩进 / Shift+Tab 反缩进（嵌套列表必备，basicSetup 默认不含）
+        indentWithTab,
         {
           key: 'Mod-s',
           run: () => {

@@ -199,10 +199,10 @@ function parseBlocks(content: string): Block[] {
 }
 
 const HEADING_CLASS = [
-  'text-base font-semibold', // h1
-  'text-[0.95rem] font-semibold', // h2
-  'text-sm font-semibold', // h3
-  'text-sm font-medium text-muted-foreground', // h4
+  'text-[1.4rem] font-bold leading-snug', // h1（与编辑器装饰对齐）
+  'text-[1.2rem] font-semibold leading-snug', // h2
+  'text-[1.05rem] font-semibold', // h3
+  'text-[0.95rem] font-semibold text-muted-foreground', // h4
 ]
 
 export default function MarkdownView({
