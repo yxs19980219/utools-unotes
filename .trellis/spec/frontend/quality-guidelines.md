@@ -71,3 +71,15 @@ npm run smoke:decorations# node scripts/smoke-decorations.ts（编辑器装饰�
 - [ ] 空态/错误提示覆盖（保存失败 toast、AC10 强提示、无结果语法提示）
 - [ ] 新契约有对应冒烟断言，`npm run smoke*` + `npm run typecheck` + `npm run build` 全绿
 - [ ] dist/plugin.json 无 development 字段（stripDevelopmentField 生效）
+
+---
+
+## Render-Layer Pitfalls（白屏/崩溃实战教训，2026-08 排查记录）
+
+纯逻辑冒烟**测不到渲染期错误**。以下三类问题曾导致整页白屏，新增/修改组件必须检查：
+
+1. **Radix/shadcn Provider 缺失**：`Tooltip` 必须被 `TooltipProvider` 包裹（本项目在 App 根统一包 `<TooltipProvider>`，新组件不要再单独包）。其他 Provider 类组件（Dialog、Select 等）同理自查。
+2. **Zustand selector 返回新引用**：`selectNotesByObject` 这类派生数组 selector 直接传给 `useStore` 会因 getSnapshot 不稳定触发无限重渲染。**必须用 `useShallow` 包裹**：`useNotesStore(useShallow((s) => selectNotesByTag(s, tagId)))`；对象引用（`.find()` 返回值）本身稳定，无需包。
+3. **短路条件 Hook**：`const a = useX() && useY()` 在 `useX()` 返回 false 时跳过 `useY`，状态翻转后 Hook 顺序错位崩溃。**禁止用 `&&`/`||`/三元连接多个 Hook 调用**，一律拆开再合并。
+
+**渲染层验证标准**：涉及组件/布局/编辑器改动的任务，必须跑 `npm run ui-smoke`（playwright-core + 系统 Edge 无头，走 MemoryDb 验证对象→笔记→钉住→首页核心闭环 + 无 console/pageerror）。Dev server 需先启动（5173）。
