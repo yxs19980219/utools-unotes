@@ -89,10 +89,10 @@ function TagSidebarRow({
   )
 }
 
-/** 分组小标题（支持右侧 action，如「活跃对象」的 + 新建按钮） */
+/** 分组小标题（支持右侧 action，如「活跃对象」的 + 新建按钮）；顶部无内距，间距由 grid gap 统一承担（对称） */
 function SectionLabel({ children, action }: { children: string; action?: ReactNode }) {
   return (
-    <div className="flex items-center justify-between px-1.5 pt-2 pb-1">
+    <div className="flex items-center justify-between px-1.5 pb-1">
       <span className="text-xs font-medium text-muted-foreground/80">{children}</span>
       {action}
     </div>
@@ -270,9 +270,11 @@ function HomeSidebarGroups() {
     )
   }
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-0.5">
-      {/* 活跃对象：上半区（与钉住标签对半分；内容多时随外层 ScrollArea 整体滚动） */}
-      <div className="flex min-h-0 flex-1 flex-col gap-0.5 pb-2">
+    <div
+      className={`grid min-h-0 flex-1 gap-2 ${pinnedTags.length > 0 ? 'grid-rows-2' : 'grid-rows-1'}`}
+    >
+      {/* 活跃对象：上半区（grid 两行严格对半分；内容多时行随内容撑开，外层 ScrollArea 滚动） */}
+      <div className="flex min-w-0 flex-col gap-0.5">
         <SectionLabel
           action={
             <Tooltip>
@@ -309,7 +311,7 @@ function HomeSidebarGroups() {
       </div>
       {/* 钉住标签：下半区（对半分；无钉住标签时不渲染） */}
       {pinnedTags.length > 0 && (
-        <div className="flex min-h-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-col gap-0.5">
           <SectionLabel>钉住标签</SectionLabel>
           {pinnedTags.map((t) => (
             <TagSidebarRow
