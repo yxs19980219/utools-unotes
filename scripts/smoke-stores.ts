@@ -68,6 +68,10 @@ async function main() {
 
   // ---- 钉住 / 归档互斥（R12） ----
   console.log('[3] 钉住与归档')
+  // 产品语义：新建对象默认钉住（创建即出现在首页，用户可取消）
+  assert.equal(selectPinnedObjects(useObjectsStore.getState()).length, 1, '新建对象默认钉住')
+  await useObjectsStore.getState().togglePinned(object._id)
+  assert.equal(selectPinnedObjects(useObjectsStore.getState()).length, 0, '取消钉住')
   await useObjectsStore.getState().togglePinned(object._id)
   assert.equal(selectPinnedObjects(useObjectsStore.getState()).length, 1)
   ok('钉住对象出现在首页钉住列表')

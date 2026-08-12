@@ -53,7 +53,8 @@ export const useObjectsStore = create<ObjectsState>()((set, get) => ({
   getById: (id) => get().objects.find((o) => o._id === id),
 
   create: async (input) => {
-    const object = await dbCreateObject(input)
+    // 新建对象默认钉住（产品语义：创建后立刻出现在首页钉住区，用户可取消）
+    const object = await dbCreateObject({ ...input, pinned: true })
     set((s) => ({ objects: [...s.objects, object] }))
     return object
   },

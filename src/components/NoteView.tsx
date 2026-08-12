@@ -1,12 +1,17 @@
 /**
- * components/NoteView.tsx —— 笔记全文只读视图（design.md R6 第二种内容形态）
+ * components/NoteView.tsx —— 笔记详情页（design.md R6 第二种内容形态）
  *
- * 入口：NoteCardList 卡片点击 → ui.openNote(id)；返回：左上角返回按钮 →
- * ui.closeNote()（选中态保留，回到对象详情或标签列表）。
- * 渲染：MarkdownView 轻量只读渲染（阶段 5 编辑器完成后可复用其预览能力）。
+ * 产品语义（用户确认）：
+ * - 创建笔记时不给正文，点击卡片进入此处写内容
+ * - 正文为空 → 直接内联 CodeMirror 即时渲染编辑器（可写即所见）
+ * - 正文非空 → 只读渲染 + 「编辑」按钮切换编辑器；Ctrl+S / 保存按钮落库
+ * - 归档笔记（AC9/R13）：纯只读，无任何编辑入口
  */
-import { ArrowLeftIcon, PencilIcon } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowLeftIcon, PencilIcon, SaveIcon } from 'lucide-react'
+import { toast } from 'sonner'
 
+import CodeMirrorEditor from '@/components/Editor/CodeMirrorEditor'
 import MarkdownView from '@/components/MarkdownView'
 import TagChip from '@/components/TagChip'
 import { Badge } from '@/components/ui/badge'
@@ -28,6 +33,12 @@ export default function NoteView({ noteId }: { noteId: string }) {
   const closeNote = useUiStore((s) => s.closeNote)
   const selectObject = useUiStore((s) => s.selectObject)
   const startEditing = useUiStore((s) => s.startEditing)
+  const updateNote = useNotesStore((s) => s.update)
+
+  /** 正文编辑态：空正文默认直接进入；非空经「编辑」按钮进入 */
+  const [editingBody, setEditingBody] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
 
   if (!note) {
     return (
@@ -42,8 +53,29 @@ export default function NoteView({ noteId }: { noteId: string }) {
     )
   }
 
-  /** 归档笔记只读（AC9/R13）：隐藏编辑按钮 + 只读标记 */
+  /** 归档笔记只读（AC9/R13）：隐藏编辑入口 */
   const readonly = object?.archived === true
+  /** 空正文直接进入编辑（可写即所见）；非空且未点编辑 → 只读 */
+  const showEditor = !readonly && (editingBody || !note.content)
+
+  const enterEdit = () => {
+    setDraft(note.content)
+    setEditingBody(true)
+  }
+
+  const saveBody = async () => {
+    if (saving) return
+    setSaving(true)
+    try {
+      await updateNote({ ...note, content: draft })
+      toast.success('正文已保存')
+      setEditingBody(false)
+    } catch (err) {
+      toast.error(`保存失败：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const tagChips = note.tags
     .map((id) => tags.find((t) => t._id === id))
@@ -53,12 +85,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* 顶部工具行：返回 + 归属对象 + 标题 + 编辑 */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1.5">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="返回"
-          onClick={closeNote}
-        >
+        <Button variant="ghost" size="icon-sm" aria-label="返回" onClick={closeNote}>
           <ArrowLeftIcon data-icon />
         </Button>
         {object && (
@@ -80,33 +107,74 @@ export default function NoteView({ noteId }: { noteId: string }) {
           </Badge>
         )}
         {!readonly && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => startEditing('note', note._id)}
-          >
+          <Button variant="outline" size="sm" onClick={() => startEditing('note', note._id)}>
             <PencilIcon data-icon />
             编辑
           </Button>
         )}
       </div>
 
-      {/* 正文区 */}
-      <ScrollArea className="min-h-0 flex-1">
-        <article className="flex flex-col gap-3 p-4">
-          {/* 元信息行：标签 + 时间 */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {tagChips.map((t) => (
-              <TagChip key={t._id} tag={t} />
-            ))}
-            <span className="ml-auto text-[0.7rem] text-muted-foreground/80">
-              更新于 {formatTime(note.updatedAt)}
-            </span>
-          </div>
+      {/* 元信息行：标签 + 时间（正文编辑时保持可见） */}
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border px-4 py-1.5">
+        {tagChips.map((t) => (
+          <TagChip key={t._id} tag={t} />
+        ))}
+        <span className="ml-auto text-[0.7rem] text-muted-foreground/80">
+          更新于 {formatTime(note.updatedAt)}
+        </span>
+      </div>
 
-          <MarkdownView content={note.content} />
-        </article>
-      </ScrollArea>
+      {/* 正文区：编辑态（CodeMirror 即时渲染）/ 只读态（MarkdownView） */}
+      {showEditor ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <CodeMirrorEditor
+              value={draft}
+              onChange={setDraft}
+              onSave={() => void saveBody()}
+              autoFocus
+              placeholder={'记录要点：# 标题、**加粗**、- 列表、``` 代码块 …'}
+            />
+          </div>
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-3 py-2">
+            <span className="mr-auto text-xs text-muted-foreground">Ctrl+S 保存正文</span>
+            {editingBody && (
+              <Button variant="outline" size="sm" onClick={() => setEditingBody(false)} disabled={saving}>
+                取消
+              </Button>
+            )}
+            <Button size="sm" onClick={() => void saveBody()} disabled={saving}>
+              <SaveIcon data-icon />
+              保存正文
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <ScrollArea className="min-h-0 flex-1">
+          <article className="flex flex-col gap-3 p-4">
+            {note.content ? (
+              <MarkdownView content={note.content} />
+            ) : (
+              <Empty className="gap-2">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <span className="text-lg leading-none">📄</span>
+                  </EmptyMedia>
+                  <EmptyTitle>暂无正文</EmptyTitle>
+                </EmptyHeader>
+              </Empty>
+            )}
+            {!readonly && (
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={enterEdit}>
+                  <PencilIcon data-icon />
+                  写正文
+                </Button>
+              </div>
+            )}
+          </article>
+        </ScrollArea>
+      )}
     </div>
   )
 }

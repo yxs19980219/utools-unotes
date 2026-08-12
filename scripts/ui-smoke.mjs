@@ -53,41 +53,42 @@ try {
   await page.waitForTimeout(800)
   ok('对象详情出现', (await page.evaluate(() => document.body.innerText)).includes('UI 冒烟测试对象'))
 
-  // 2. 新建笔记（CodeMirror 输入 markdown）
+  // 2. 新建笔记：仅标题+标签（无正文编辑器），保存后回列表
   await page.getByRole('button', { name: /新笔记/ }).first().click()
   await page.waitForTimeout(500)
   await page.getByLabel('标题').fill('冒烟笔记')
-  await page.locator('.cm-content').click()
-  await page.keyboard.type('# 标题\n正文内容一。')
-  await page.waitForTimeout(400)
+  const hasBodyEditor = await page.evaluate(() => !!document.querySelector('.cm-content'))
+  ok('新建笔记无正文编辑器（快速创建）', !hasBodyEditor)
   await page.getByRole('button', { name: '保存' }).click()
   await page.waitForTimeout(800)
-  const afterNote = await page.evaluate(() => document.body.innerText)
-  ok('笔记卡片出现', afterNote.includes('冒烟笔记') && afterNote.includes('正文内容一'))
+  ok('笔记卡片出现', (await page.evaluate(() => document.body.innerText)).includes('冒烟笔记'))
 
-  // 3. 钉住 → 首页钉住区
-  await page.getByRole('button', { name: /钉住/ }).first().click()
-  await page.waitForTimeout(500)
+  // 3. 点卡片 → 详情内联编辑器（空正文直接可写）
+  await page.getByText('冒烟笔记').first().click()
+  await page.waitForTimeout(600)
+  await page.locator('.cm-content').click()
+  await page.keyboard.type('# 标题\n- 列表项一\n- 列表项二')
+  await page.waitForTimeout(400)
+  const deco = await page.evaluate(() => {
+    const cm = document.querySelector('.cm-content')
+    return {
+      dimCount: cm?.querySelectorAll('.sn-md-dim').length ?? 0,
+      headingStyled: !!cm?.querySelector('.cm-line .sn-md-h1'),
+    }
+  })
+  ok('即时渲染：标题样式装饰', deco.headingStyled)
+  ok('即时渲染：列表标记淡色（- 符号）', deco.dimCount >= 2)
+  await page.getByRole('button', { name: '保存正文' }).click()
+  await page.waitForTimeout(800)
+  const saved = await page.evaluate(() => document.body.innerText)
+  ok('正文保存后只读渲染', saved.includes('列表项一'))
+
+  // 4. 钉住 → 首页钉住区（新建对象默认钉住 + 手动钉住兼容）
+  await page.getByRole('button', { name: /返回/ }).first().click()
+  await page.waitForTimeout(400)
   await page.getByRole('tab', { name: '首页' }).click()
   await page.waitForTimeout(500)
   ok('首页钉住区出现对象', (await page.evaluate(() => document.body.innerText)).includes('UI 冒烟测试对象'))
-
-  // 4. 编辑器打开且 markdown 保真
-  await page.getByText('冒烟笔记').first().click()
-  await page.waitForTimeout(500)
-  const editBtns = await page.getByRole('button', { name: /编辑/ }).all()
-  if (editBtns.length) await editBtns[0].click()
-  await page.waitForTimeout(500)
-  const editorState = await page.evaluate(() => {
-    const cm = document.querySelector('.cm-content')
-    return { hasCodemirror: !!cm, text: cm?.innerText ?? '' }
-  })
-  ok('编辑器打开且内容保真', editorState.hasCodemirror && editorState.text.includes('# 标题'))
-
-  // 5. 标签联想（AC4 渲染层验证）
-  await page.locator('.cm-content').click()
-  await page.getByRole('button', { name: '取消' }).click()
-  await page.waitForTimeout(400)
 } catch (e) {
   console.error('脚本异常:', e.message.slice(0, 300))
   process.exitCode = 1

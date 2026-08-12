@@ -55,8 +55,8 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   /* ---- 装饰类（全部语义色，暗色随 Token 自动切换） ---- */
   /* 淡色语法标记（标题 # / 粗斜标记 / 列表符号 / 引用 > / 围栏） */
   '.sn-md-dim': { color: 'var(--muted-foreground)', opacity: '0.45' },
-  /* 非光标行标题标记：隐藏但保留占位（行内 span，不改变排版） */
-  '.sn-md-hidden': { opacity: '0' },
+  /* 非光标行标题/列表标记：完全收起（display:none 不占位）→ 内容顶格展示（Obsidian 折叠标记同款） */
+  '.sn-md-hidden': { display: 'none' },
   /* 标题整行样式（字号/字重随级别，与 MarkdownView 只读渲染对齐） */
   '.sn-md-h1': { fontSize: '1rem', fontWeight: '600' },
   '.sn-md-h2': { fontSize: '0.95rem', fontWeight: '600' },
