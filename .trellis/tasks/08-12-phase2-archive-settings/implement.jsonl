@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Workflow Conventions（按钮级对齐/阶段验收/渲染门禁/CSS 兼容）+ 渲染层陷阱清单 + 测试体系"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand store 拆分模式、bootstrap 幂等、跨 store 一致性编排（settings store 遵循同一模式）"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件模式：纯展示+store 接线分离、NoteCardList 复用、语义色/紧凑密度"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "utools.db 约定：_id 前缀、_rev、幂等删除（setting/ 文档读写）"}
+{"file": "C:/Users/Fengzhi/.agents/skills/utools-dev/SKILL.md", "reason": "uTools 插件规范：plugin.json、utools.db 红线、CSS 兼容（Lightning CSS）"}

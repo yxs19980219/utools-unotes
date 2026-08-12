@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "渲染层门禁（ui-smoke 必跑）+ 工作方式约定（阶段验收、按钮级对齐）"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "跨 store 一致性核查（settings 枚举与下拉/筛选器数据流）"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "设置页枚举 → store → 表单/筛选器 → db 的跨层数据流检查"}
+{"file": "C:/Users/Fengzhi/.agents/skills/utools-dev/SKILL.md", "reason": "合规检查：utools.db 红线（草稿 localStorage 不入库）、构建产物"}
