@@ -256,37 +256,6 @@ async function main() {
   assert.equal(useUiStore.getState().preSearchSort, 'title', '退出搜索恢复偏好排序')
   ok('偏好：默认排序保存 + 应用（搜索态不覆盖）')
 
-  // ---- 二期：草稿拦截（R11/R12 requestRoute/discardDirty） ----
-  console.log('[12] 草稿拦截（requestRoute / discardDirty）')
-  assert.equal(useUiStore.getState().pendingDirty, false)
-  useUiStore.getState().setPendingDirty(true, () => 'discarded')
-  // 路由请求被暂存，不立即执行
-  let executed = false
-  useUiStore.getState().requestRoute(() => {
-    executed = true
-  })
-  assert.equal(executed, false, 'pendingDirty 时路由请求被拦截')
-  assert.ok(useUiStore.getState().dirtyRoute !== null, '请求暂存到 dirtyRoute')
-  // 取消：留在原处，请求未执行
-  useUiStore.getState().cancelRoute()
-  assert.equal(executed, false)
-  assert.equal(useUiStore.getState().dirtyRoute, null)
-  // 放弃：执行 onDiscard + 暂存请求
-  useUiStore.getState().requestRoute(() => {
-    executed = true
-  })
-  useUiStore.getState().discardDirty()
-  assert.equal(executed, true, '放弃后执行暂存请求')
-  assert.equal(useUiStore.getState().pendingDirty, false)
-  assert.equal(useUiStore.getState().dirtyRoute, null)
-  // 无 dirty 时直接执行
-  executed = false
-  useUiStore.getState().requestRoute(() => {
-    executed = true
-  })
-  assert.equal(executed, true, '无 dirty 时请求直接执行')
-  ok('草稿拦截：拦截/取消/放弃/直通')
-
   console.log(`\n✅ stores 冒烟通过（${passed} 项断言）`)
 }
 

@@ -93,12 +93,20 @@ try {
   await page.waitForTimeout(300)
   const taskCount = await page.evaluate(() => document.querySelectorAll('.sn-task-box').length)
   ok('快捷工具栏：勾选框插入', taskCount >= 1)
-  await page.getByRole('button', { name: '保存正文' }).click()
-  await page.waitForTimeout(800)
-  const saved = await page.evaluate(() => document.body.innerText)
-  ok('正文保存后只读渲染', saved.includes('列表项一'))
+  // 实时保存：无「保存正文」按钮；等待 300ms 防抖落盘
+  await page.waitForTimeout(600)
+  ok('无保存正文按钮', (await page.getByRole('button', { name: /保存正文/ }).count()) === 0)
 
-  // 4. 返回对象详情 → 首页活跃列表（三期：无重新钉住概念）
+  // 4. 返回 → 重开笔记：正文已自动落盘（实时保存链路，重开仍在编辑器）
+  await page.getByRole('button', { name: /返回/ }).first().click()
+  await page.waitForTimeout(400)
+  await page.getByText('冒烟笔记').first().click()
+  await page.waitForTimeout(600)
+  const persisted = await page.evaluate(
+    () => document.querySelector('.cm-content')?.textContent ?? '',
+  )
+  ok('实时保存：重开后正文仍在（未手动保存）',
+    persisted.includes('列表项一') && persisted.includes('待办项'))
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.waitForTimeout(400)
   await page.getByRole('tab', { name: '首页' }).click()
@@ -146,12 +154,14 @@ try {
     archivedDetail.includes('已归档（只读）') &&
     (await page.getByRole('button', { name: /新笔记/ }).count()) === 0 &&
     (await page.getByRole('button', { name: '恢复', exact: true }).count()) === 1)
-  // 归档笔记 → 只读 NoteView（无写正文入口）
+  // 归档笔记 → 只读 NoteView（无正文编辑器）
   await page.getByText('冒烟笔记').first().click()
   await page.waitForTimeout(500)
   const archivedNote = await page.evaluate(() => document.body.innerText)
-  ok('归档笔记只读 NoteView', archivedNote.includes('已归档（只读）') &&
-    (await page.getByRole('button', { name: /写正文/ }).count()) === 0)
+  const readOnlyNoEditor = await page.evaluate(
+    () => document.querySelectorAll('.cm-content').length === 0,
+  )
+  ok('归档笔记只读 NoteView（无编辑器）', archivedNote.includes('已归档（只读）') && readOnlyNoEditor)
   // 归档视图对象行右键 = 恢复/删除
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.waitForTimeout(400)
@@ -250,39 +260,27 @@ try {
   // 三期反馈：进入笔记后顶部对象栏整体隐藏（ContentHeader 不渲染）
   ok('进入笔记后对象栏隐藏（无归档按钮）',
     (await page.getByRole('button', { name: '归档对象' }).count()) === 0)
-  await page.getByRole('button', { name: /写正文/ }).click()
-  await page.waitForTimeout(400)
+  // 实时保存时代：无「写正文」按钮（已进入编辑态）、无 localStorage 草稿、切走无确认框
   await page.locator('.cm-content').click()
-  await page.keyboard.type('\n草稿内容测试')
-  await page.waitForTimeout(700) // 防抖 500ms 落盘
-  const draftKeys = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('sn:draft:')))
-  ok('AC9：草稿自动暂存 localStorage', draftKeys.length === 1 &&
-    (await page.evaluate((k) => localStorage.getItem(k), draftKeys[0])).includes('草稿内容测试'))
-  // 返回 → 确认框（AC8）
+  await page.keyboard.type('\n实时保存测试')
+  await page.waitForTimeout(700) // 300ms 防抖落盘
+  const draftKeys = await page.evaluate(() =>
+    Object.keys(localStorage).filter((k) => k.startsWith('sn:draft:')),
+  )
+  ok('实时保存：无 localStorage 草稿残留', draftKeys.length === 0)
+  // 返回 → 无确认框（DirtyGuard 已删），直接退出
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.waitForTimeout(400)
-  ok('AC8：切走弹确认框', await page.getByRole('alertdialog').getByText('有未保存的改动').isVisible())
-  await page.getByRole('alertdialog').getByRole('button', { name: '取消' }).click()
-  await page.waitForTimeout(400)
-  ok('AC8：取消留在编辑态', (await page.evaluate(() => !!document.querySelector('.cm-content'))))
-  // 再返回 → 放弃 → 回列表且草稿已清
-  await page.getByRole('button', { name: /返回/ }).first().click()
-  await page.waitForTimeout(400)
-  await page.getByRole('alertdialog').getByRole('button', { name: '放弃更改' }).click()
-  await page.waitForTimeout(600)
-  const draftAfterDiscard = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('sn:draft:')))
-  ok('AC8：放弃丢失改动并返回（草稿已清）',
-    (await page.evaluate(() => !!document.querySelector('.cm-content'))) === false &&
-    draftAfterDiscard.length === 0)
-  // 重进笔记：无恢复提示（放弃已清）
+  ok('实时保存：切走无确认框', (await page.getByRole('alertdialog').count()) === 0)
+  // 重进笔记：正文已自动落盘（持久化验证）
   await page.getByText('冒烟笔记').first().click()
-  await page.waitForTimeout(500)
-  const afterReenter = await page.evaluate(() => document.body.innerText)
-  ok('放弃后重进无草稿恢复', !afterReenter.includes('已恢复未保存的草稿'))
-  // 清理：删除测试草稿 key（防泄漏）
-  await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('sn:draft:')).forEach((k) => localStorage.removeItem(k)))
+  await page.waitForTimeout(600)
+  const reenterText = await page.evaluate(
+    () => document.querySelector('.cm-content')?.textContent ?? '',
+  )
+  ok('实时保存：重进正文仍在（未手动保存）', reenterText.includes('实时保存测试'))
 
-  // 9. 空正文笔记（可写即所见）草稿保护
+  // 9. 空正文笔记（可写即所见）实时保存
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.waitForTimeout(400)
   await page.getByRole('button', { name: /新笔记/ }).first().click()
@@ -296,14 +294,13 @@ try {
   await page.locator('.cm-content').click()
   await page.keyboard.type('空正文草稿内容')
   await page.waitForTimeout(700)
-  const emptyDraftKeys = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('sn:draft:')))
-  ok('空正文编辑也自动暂存', emptyDraftKeys.length === 1)
+  const emptyDraftKeys = await page.evaluate(() =>
+    Object.keys(localStorage).filter((k) => k.startsWith('sn:draft:')),
+  )
+  ok('空正文编辑也无草稿（实时落盘）', emptyDraftKeys.length === 0)
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.waitForTimeout(400)
-  ok('空正文编辑切走弹确认框', await page.getByRole('alertdialog').getByText('有未保存的改动').isVisible())
-  await page.getByRole('alertdialog').getByRole('button', { name: '放弃更改' }).click()
-  await page.waitForTimeout(600)
-  await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('sn:draft:')).forEach((k) => localStorage.removeItem(k)))
+  ok('空正文编辑切走无确认框', (await page.getByRole('alertdialog').count()) === 0)
 
   // 10. AC3 右键删除执行（级联）：删除「播客对象」
   await page.getByRole('tab', { name: '首页' }).click()

@@ -8,9 +8,9 @@
  * - 标题可留空：保存时自动占位「未命名 MM-DD HH:mm」，用户随时可改（解决"一个对象
  *   只有一条笔记时标题难起"）
  * 标签：TagInput 联想补全（匹配 name+aliases），提交经 resolveTagIds 统一归并（唯一入口）。
- * 草稿保护（R12）：标题/标签/归属有未保存改动时，切走经 DirtyGuard 确认（放弃/取消）。
+ * 表单保存仍为手动按钮（新建无 id 无法实时保存）；无未保存确认（实时保存时代，08-12）。
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import TagInput from '@/components/TagInput'
@@ -62,7 +62,6 @@ export default function NoteForm() {
   const updateNote = useNotesStore((s) => s.update)
   const selectObject = useUiStore((s) => s.selectObject)
   const stopEditing = useUiStore((s) => s.stopEditing)
-  const setPendingDirty = useUiStore((s) => s.setPendingDirty)
 
   // 新建：预填当前对象详情上下文（仅活跃对象）；编辑：取笔记归属对象
   const [objectId, setObjectId] = useState(
@@ -72,28 +71,6 @@ export default function NoteForm() {
   /** 已选标签（canonical tagId 列表，TagInput 维护） */
   const [tags, setTags] = useState<string[]>(note?.tags ?? [])
   const [saving, setSaving] = useState(false)
-  /** 初始值快照（dirty 判定基准，R12） */
-  const initialRef = useRef({
-    objectId: note?.objectId ?? (editingId === null ? initialObjectIdFor(selectedObjectId) : ''),
-    title: note?.title ?? '',
-    tags: [...(note?.tags ?? [])],
-  })
-
-  /** 未保存改动判定（R12）：任一字段与初始值不同即 dirty */
-  const dirty =
-    title !== initialRef.current.title ||
-    objectId !== initialRef.current.objectId ||
-    JSON.stringify(tags) !== JSON.stringify(initialRef.current.tags)
-
-  /** dirty → 置位 pendingDirty（路由切换先确认；onDiscard 无需清理，表单无落盘草稿） */
-  useEffect(() => {
-    setPendingDirty(dirty)
-  }, [dirty, setPendingDirty])
-
-  /** 卸载清理（保存/取消后的正常退出）：清标志避免卡住后续路由 */
-  useEffect(() => {
-    return () => setPendingDirty(false)
-  }, [setPendingDirty])
 
   const isNew = !note
   /** 仅无上下文的新建（header 直接新建且未选中对象）才显示兜底对象选择 */
@@ -131,9 +108,8 @@ export default function NoteForm() {
     }
   }
 
-  /** 取消：明确放弃（R12），直接退出并清 dirty 标志 */
+  /** 取消：直接退出编辑态 */
   const handleCancel = () => {
-    setPendingDirty(false)
     stopEditing()
   }
 
@@ -195,7 +171,7 @@ export default function NoteForm() {
       </div>
 
       {/* 底部操作 */}
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-3 py-2">
+      <div className="flex shrink-0 items-center justify-end gap-2 bg-muted/50 px-3 py-2">
         <span className="mr-auto text-xs text-muted-foreground">
           保存后点击笔记卡片，进入详情写正文
         </span>

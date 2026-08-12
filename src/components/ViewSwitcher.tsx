@@ -3,7 +3,7 @@
  *
  * [首页|标签|归档|设置]；二期已放开（归档/设置视图）。
  * 用 shadcn Tabs（规则：TabsTrigger 必须包在 TabsList 内）；value 与 ui store 的 view 双向绑定。
- * 路由切换经 requestRoute（草稿保护 R11/R12：pendingDirty 时先确认）。
+ * 路由切换直接调用（实时保存时代无确认）。
  */
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useUiStore, type View } from '@/stores/ui'
@@ -17,13 +17,12 @@ const VIEWS: { value: View; label: string }[] = [
 
 export default function ViewSwitcher() {
   const view = useUiStore((s) => s.view)
-  const requestRoute = useUiStore((s) => s.requestRoute)
-  const setView = useUiStore((s) => s.setView)
+    const setView = useUiStore((s) => s.setView)
 
   return (
     <Tabs
       value={view}
-      onValueChange={(v) => requestRoute(() => setView(v as View))}
+      onValueChange={(v) => setView(v as View)}
       className="w-full gap-1"
     >
       <TabsList className="w-full">

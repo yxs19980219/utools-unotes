@@ -17,7 +17,8 @@
 
 - **db 是唯一事实源，store 是内存投影**：所有写操作"先 db 后内存"（`await dbXxx()` 成功后才 `set()`），不出现内存与 db 不一致窗口
 - **启动全量加载**：`bootstrapStores()`（`src/stores/bootstrap.ts:17-31`）一次 `allDocs()` 全量，按类型守卫分区 `hydrate` 三个域；in-flight 共享同一 Promise（幂等），完成后再次调用会重新拉取（uTools 重新进入插件可刷新外部同步数据）
-- 表单草稿是**组件本地 state**，不进全局 store（store 只记 `editing: {kind, id}`）；搜索查询文本在 ui store（子输入框驱动，跨组件需要）
+- **表单草稿是**组件本地 state**，不进全局 store（store 只记 `editing: {kind, id}`）；搜索查询文本在 ui store（子输入框驱动，跨组件需要）
+- **无未保存确认机制（08-12 起）**：实时保存时代，`ui.ts` 无 pendingDirty/requestRoute；路由切换（selectObject/selectTag/setView/closeNote/startEditing）直接执行、不弹确认框；localStorage 草稿（`sn:draft:*`）已废弃，不得新增依赖
 - 无 server state 概念：本地 db 单机，无缓存层/无失效策略
 
 ---
@@ -52,6 +53,35 @@
   - 注意顺序：**先清理引用再删本体**；引用清理失败则整体中断（抛错由调用方处理），不会出现"标签没了引用还在"
 
 ---
+
+## 正文实时保存模式（NoteView，08-12）
+
+**契约**：非归档笔记打开即编辑；停止输入 300ms 防抖自动落盘（`updateNote`）；成功静默、失败 toast.error；无手动保存按钮、无确认框。
+
+**并发串行化（关键正确性）**：`db.updateNote` 带旧 `_rev` 的 put 会 conflict，保存必须串行：
+
+```typescript
+const draftRef = useRef(draft)        // ref 镜像：定时器回调读最新输入，避免闭包 stale
+const saveTimerRef = useRef<number | null>(null)  // 防抖 timer 必须放 ref（hook-guidelines）
+const savingRef = useRef(false)       // 保存进行中标志
+
+async function save() {
+  if (savingRef.current) return       // 保存中：跳过，由成功后追平兜住
+  const latest = useNotesStore.getState().getById(noteId)
+  const content = draftRef.current
+  if (!latest || content === latest.content) return
+  savingRef.current = true
+  let ok = false
+  try { await updateNote({ ...latest, content }); ok = true }
+  catch (err) { toast.error(...) }    // 失败不追平（防无限重试循环）
+  finally { savingRef.current = false }
+  if (ok && draftRef.current !== content) void save()  // 成功且期间有新输入 → 追平
+}
+```
+
+**卸载 flush**：卸载时若防抖 pending 且有改动，fire-and-forget 立即保存（`!savingRef.current` 时）；无确认框。
+
+**保存值取 store 最新 note**（`getById(noteId)` 再改 content），保证 `_rev` 最新、避免 conflict。
 
 ## Common Mistakes
 

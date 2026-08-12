@@ -102,8 +102,7 @@ function ObjectHeaderActions({ objectId }: { objectId: string }) {
   const object = useObjectsStore((s) => s.objects.find((o) => o._id === objectId))
   const notes = useNotesStore(useShallow((s) => selectNotesByObject(s, objectId)))
   const sourceTypes = useSourceTypes()
-  const requestRoute = useUiStore((s) => s.requestRoute)
-  const startEditing = useUiStore((s) => s.startEditing)
+    const startEditing = useUiStore((s) => s.startEditing)
   const sort = useUiStore((s) => s.sort)
   const setSort = useUiStore((s) => s.setSort)
   /** 确认框类型（恢复/删除；归档走独立 AlertDialogTrigger），null = 关闭 */
@@ -156,7 +155,7 @@ function ObjectHeaderActions({ objectId }: { objectId: string }) {
 
   return (
     <>
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+      <div className="flex h-11 shrink-0 items-center gap-2 px-3">
         <Badge variant="secondary" className="shrink-0">
           {sourceTypeLabel(object.sourceType, sourceTypes)}
         </Badge>
@@ -194,7 +193,7 @@ function ObjectHeaderActions({ objectId }: { objectId: string }) {
           </Button>
         ) : (
           <>
-            <Button size="sm" onClick={() => requestRoute(() => startEditing('note', null))}>
+            <Button size="sm" onClick={() => startEditing('note', null)}>
               <PlusIcon data-icon />
               新笔记
             </Button>
@@ -212,7 +211,7 @@ function ObjectHeaderActions({ objectId }: { objectId: string }) {
               size="icon-sm"
               aria-label="编辑对象"
               title="编辑"
-              onClick={() => requestRoute(() => startEditing('object', objectId))}
+              onClick={() => startEditing('object', objectId)}
             >
               <PencilIcon data-icon />
             </Button>
@@ -230,9 +229,9 @@ function ObjectHeaderActions({ objectId }: { objectId: string }) {
         )}
       </div>
 
-      {/* 来源元数据第二行（有内容才显示；三期：随顶栏展示，不再单独一行） */}
+      {/* 来源元数据信息块（方案 B：浅灰圆角块与标题一体，无分割线；有内容才显示） */}
       {(meta?.author || meta?.url || meta?.year) && (
-        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-0.5 border-b border-border px-3 pb-1.5">
+        <div className="mx-3 mb-1.5 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-0.5 rounded-md bg-muted/50 px-2.5 py-1.5">
           {meta?.author && (
             <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
               <UserIcon data-icon className="size-3 shrink-0" />
@@ -320,7 +319,7 @@ export default function ContentHeader() {
   // 编辑态：全内容区被表单替换，标题行右侧操作全部隐藏（design 交互细节 5）
   if (editing) {
     return (
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+      <header className="flex h-11 shrink-0 items-center gap-2 px-3">
         <h1 className="min-w-0 flex-1 truncate text-sm font-medium" title={title}>
           {title}
         </h1>
@@ -334,7 +333,7 @@ export default function ContentHeader() {
   }
 
   return (
-    <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
+    <header className="flex h-11 shrink-0 items-center justify-between gap-2 px-3">
       <h1 className="min-w-0 flex-1 truncate text-sm font-medium" title={title}>
         {title}
       </h1>

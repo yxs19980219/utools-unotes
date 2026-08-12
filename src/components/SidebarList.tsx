@@ -8,7 +8,7 @@
  * - 标签：全部标签（name + 计数 Badge），点击 → selectTag，高亮联动
  * - 归档：已归档对象列表（标题 + 来源图标 + 归档时间，按归档时间倒序）
  * - 设置：空态占位（内容区为 SettingsView）
- * 路由切换（selectObject/selectTag/startEditing）经 requestRoute（草稿保护 R11/R12）。
+ * 路由切换（selectObject/selectTag/startEditing）直接调用（实时保存时代无确认）。
  */
 import { useMemo, useState, type ReactNode } from 'react'
 import {
@@ -123,8 +123,7 @@ function ObjectContextMenu({
   children: ReactNode
 }) {
   const startEditing = useUiStore((s) => s.startEditing)
-  const requestRoute = useUiStore((s) => s.requestRoute)
-  const notes = useNotesStore(useShallow((s) => selectNotesByObject(s, object._id)))
+    const notes = useNotesStore(useShallow((s) => selectNotesByObject(s, object._id)))
   /** 当前确认框类型（null = 关闭） */
   const [dialog, setDialog] = useState<'archive' | 'restore' | 'delete' | null>(null)
   const [busy, setBusy] = useState(false)
@@ -180,7 +179,7 @@ function ObjectContextMenu({
         {mode === 'active' && (
           <>
             <ContextMenuItem
-              onSelect={() => requestRoute(() => startEditing('object', object._id))}
+              onSelect={() => startEditing('object', object._id)}
             >
               <PencilIcon data-icon />
               编辑
@@ -246,8 +245,7 @@ function HomeSidebarGroups() {
   const selectedTagId = useUiStore((s) => s.selectedTagId)
   const selectObject = useUiStore((s) => s.selectObject)
   const selectTag = useUiStore((s) => s.selectTag)
-  const requestRoute = useUiStore((s) => s.requestRoute)
-  const startEditing = useUiStore((s) => s.startEditing)
+    const startEditing = useUiStore((s) => s.startEditing)
   // 活跃对象按更新时间倒序（最新改动在前）
   const sortedObjects = useMemo(
     () => [...activeObjects].sort((a, b) => b.updatedAt - a.updatedAt),
@@ -265,7 +263,7 @@ function HomeSidebarGroups() {
           <EmptyTitle>还没有对象</EmptyTitle>
           <EmptyDescription>创建你的第一个学习对象（书籍 / 视频 / 项目…）</EmptyDescription>
         </EmptyHeader>
-        <Button size="sm" onClick={() => requestRoute(() => startEditing('object', null))}>
+        <Button size="sm" onClick={() => startEditing('object', null)}>
           <PlusIcon data-icon />
           新建对象
         </Button>
@@ -284,7 +282,7 @@ function HomeSidebarGroups() {
                 size="icon-xs"
                 aria-label="新建对象"
                 title="新建对象"
-                onClick={() => requestRoute(() => startEditing('object', null))}
+                onClick={() => startEditing('object', null)}
               >
                 <PlusIcon data-icon />
               </Button>
@@ -303,7 +301,7 @@ function HomeSidebarGroups() {
               icon={<Icon />}
               label={o.title}
               active={selectedObjectId === o._id}
-              onClick={() => requestRoute(() => selectObject(o._id))}
+              onClick={() => selectObject(o._id)}
             />
           </ObjectContextMenu>
         )
@@ -316,7 +314,7 @@ function HomeSidebarGroups() {
               key={t._id}
               tag={t}
               active={selectedTagId === t._id}
-              onClick={() => requestRoute(() => selectTag(t._id))}
+              onClick={() => selectTag(t._id)}
             />
           ))}
         </>
@@ -331,8 +329,7 @@ function TagsSidebarList() {
   const tags = useTagsStore((s) => s.tags)
   const notes = useNotesStore((s) => s.notes)
   const selectedTagId = useUiStore((s) => s.selectedTagId)
-  const requestRoute = useUiStore((s) => s.requestRoute)
-  const selectTag = useUiStore((s) => s.selectTag)
+    const selectTag = useUiStore((s) => s.selectTag)
   const counts = useMemo(() => countNotesByTag(tags, notes), [tags, notes])
   const sorted = useMemo(
     () => [...tags].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN')),
@@ -361,7 +358,7 @@ function TagsSidebarList() {
           tag={t}
           badge={counts.get(t._id) ?? 0}
           active={selectedTagId === t._id}
-          onClick={() => requestRoute(() => selectTag(t._id))}
+          onClick={() => selectTag(t._id)}
         />
       ))}
     </div>
@@ -373,8 +370,7 @@ function ArchivedSidebarList() {
   const loaded = useObjectsStore((s) => s.loaded)
   const archivedObjects = useObjectsStore(useShallow(selectArchivedObjects))
   const selectedObjectId = useUiStore((s) => s.selectedObjectId)
-  const requestRoute = useUiStore((s) => s.requestRoute)
-  const selectObject = useUiStore((s) => s.selectObject)
+    const selectObject = useUiStore((s) => s.selectObject)
   // 归档时间 = setArchived 时的 updatedAt（update 自动 touch）；最新归档在前
   const sorted = useMemo(
     () => [...archivedObjects].sort((a, b) => b.updatedAt - a.updatedAt),
@@ -406,7 +402,7 @@ function ArchivedSidebarList() {
               label={o.title}
               trailing={formatTime(o.updatedAt)}
               active={selectedObjectId === o._id}
-              onClick={() => requestRoute(() => selectObject(o._id))}
+              onClick={() => selectObject(o._id)}
             />
           </ObjectContextMenu>
         )

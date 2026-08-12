@@ -83,7 +83,7 @@ const TOOLS: ToolDef[] = [
 export default function MarkdownToolbar({ api }: { api: MarkdownInsertApi }) {
   return (
     <div
-      className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border px-1.5 py-1"
+      className="flex shrink-0 flex-wrap items-center gap-0.5 px-1.5 py-1"
       role="toolbar"
       aria-label="Markdown 快捷插入"
     >

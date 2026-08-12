@@ -142,7 +142,7 @@ export default function ObjectForm() {
       </ScrollArea>
 
       {/* 底部操作 */}
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-3 py-2">
+      <div className="flex shrink-0 items-center justify-end gap-2 bg-muted/50 px-3 py-2">
         <Button variant="outline" size="sm" onClick={stopEditing} disabled={saving}>
           取消
         </Button>
