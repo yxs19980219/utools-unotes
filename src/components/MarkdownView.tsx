@@ -8,6 +8,7 @@
  */
 import { useMemo, type ReactNode } from 'react'
 
+import { TABLE_ROW_RE, TABLE_SEP_RE } from '@/lib/markdown'
 import { cn } from '@/lib/utils'
 
 type InlineToken =
@@ -70,7 +71,8 @@ function renderInline(tokens: InlineToken[], keyPrefix: string): ReactNode {
             href={t.href}
             target="_blank"
             rel="noreferrer"
-            className="text-primary underline underline-offset-4"
+            // R13（用户拍板）：链接 = 前景色 + 下划线（浅色模式可见）
+            className="text-foreground underline underline-offset-4"
           >
             {t.value}
           </a>
@@ -87,6 +89,7 @@ type Block =
   | { kind: 'hr' }
   | { kind: 'quote'; lines: string[] }
   | { kind: 'list'; ordered: boolean; items: { text: string; checked: boolean | null }[] }
+  | { kind: 'table'; header: string[]; rows: string[][] }
   | { kind: 'para'; lines: string[] }
 
 const HEADING_RE = /^(#{1,4})\s+(.*)$/
@@ -94,6 +97,15 @@ const HR_RE = /^\s*(?:---|\*\*\*)\s*$/
 const QUOTE_RE = /^\s*>\s?(.*)$/
 const TASK_RE = /^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/
 const LIST_RE = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/
+
+/** 表格行 → 单元格数组（去首尾 |，逐格 trim） */
+function splitTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\||\|$/g, '')
+    .split('|')
+    .map((c) => c.trim())
+}
 
 /** 块级解析：代码块优先，其次标题/分隔线/引用/列表，其余归段落 */
 function parseBlocks(content: string): Block[] {
@@ -131,6 +143,19 @@ function parseBlocks(content: string): Block[] {
       flushPara([])
       blocks.push({ kind: 'heading', level: h[1].length, text: h[2] })
       i += 1
+      continue
+    }
+    // 表格（R10）：分隔行 + 上一行表头 → 整表
+    if (i > 0 && TABLE_SEP_RE.test(line) && TABLE_ROW_RE.test(lines[i - 1])) {
+      flushPara([])
+      const header = splitTableRow(lines[i - 1])
+      const rows: string[][] = []
+      i += 1
+      while (i < lines.length && TABLE_ROW_RE.test(lines[i])) {
+        rows.push(splitTableRow(lines[i]))
+        i += 1
+      }
+      blocks.push({ kind: 'table', header, rows })
       continue
     }
     // 分隔线
@@ -264,6 +289,34 @@ export default function MarkdownView({
               </Comp>
             )
           }
+          case 'table':
+            return (
+              <div key={key} className="overflow-x-auto rounded-md border border-border">
+                {/* 行向底边框：tbody 最后一行 td 去底边框（列向 last:border-b-0 是错误用法） */}
+                <table className="w-full border-collapse text-sm [&_tbody_tr:last-child_td]:border-b-0">
+                  <thead>
+                    <tr>
+                      {b.header.map((cell, j) => (
+                        <th key={j} className="border-b border-border px-2 py-1 text-left font-semibold">
+                          {renderInline(parseInline(cell), `${key}-h${j}`)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {b.rows.map((row, r) => (
+                      <tr key={r}>
+                        {row.map((cell, j) => (
+                          <td key={j} className="border-b border-border px-2 py-1 align-top">
+                            {renderInline(parseInline(cell), `${key}-${r}-${j}`)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
           default:
             return (
               <p key={key}>

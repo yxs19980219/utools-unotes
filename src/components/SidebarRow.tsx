@@ -14,6 +14,8 @@ interface SidebarRowProps {
   label: string
   /** 右侧角标（如标签笔记计数） */
   badge?: number
+  /** 右侧弱化文本（如归档时间；不受 hover 控制） */
+  trailing?: ReactNode
   /** 弱化显示（如空标题兜底） */
   muted?: boolean
   /** 选中高亮（与 ui store 选中项联动） */
@@ -29,6 +31,7 @@ export default function SidebarRow({
   icon,
   label,
   badge,
+  trailing,
   muted,
   active,
   onClick,
@@ -71,6 +74,9 @@ export default function SidebarRow({
         <span className="shrink-0 rounded-full bg-muted px-1.5 text-xs text-muted-foreground tabular-nums">
           {badge}
         </span>
+      )}
+      {trailing && (
+        <span className="shrink-0 text-[0.7rem] text-muted-foreground/80">{trailing}</span>
       )}
       {actions && (
         <span

@@ -4,10 +4,12 @@
  * - 首页：钉住对象（图标 = 来源类型映射）+ 钉住标签分组；点击 → selectObject/selectTag；
  *   无钉住时 Empty 引导 CTA「新建对象」→ startEditing('object', null)（4a）
  * - 标签：全部标签（name + 计数 Badge），点击 → selectTag，高亮联动（4a/R8）
- * - 归档/设置：二期占位（触发入口已置灰，此处兜底）
+ * - 归档：已归档对象列表（标题 + 来源图标 + 归档时间，按归档时间倒序），点击 → selectObject
+ * - 设置：空态占位（内容区为 SettingsView）
+ * 路由切换（selectObject/selectTag/startEditing）经 requestRoute（草稿保护 R11/R12）。
  */
 import { useMemo } from 'react'
-import { PinIcon, PlusIcon, TagIcon } from 'lucide-react'
+import { ArchiveIcon, PinIcon, PlusIcon, SettingsIcon, TagIcon } from 'lucide-react'
 
 import SidebarRow from '@/components/SidebarRow'
 import TagRowActions from '@/components/TagRowActions'
@@ -21,9 +23,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatTime } from '@/lib/format'
 import { sourceTypeIcon } from '@/lib/sourceTypes'
 import { useNotesStore } from '@/stores/notes'
-import { selectPinnedObjects, useObjectsStore } from '@/stores/objects'
+import { selectArchivedObjects, selectPinnedObjects, useObjectsStore } from '@/stores/objects'
 import { countNotesByTag, selectPinnedTags, useTagsStore } from '@/stores/tags'
 import { useUiStore } from '@/stores/ui'
 import { useShallow } from 'zustand/react/shallow'
@@ -83,6 +86,7 @@ function HomeSidebarGroups() {
   const selectedTagId = useUiStore((s) => s.selectedTagId)
   const selectObject = useUiStore((s) => s.selectObject)
   const selectTag = useUiStore((s) => s.selectTag)
+  const requestRoute = useUiStore((s) => s.requestRoute)
   const startEditing = useUiStore((s) => s.startEditing)
 
   if (!loaded) return <ListSkeleton />
@@ -99,7 +103,7 @@ function HomeSidebarGroups() {
           </EmptyDescription>
         </EmptyHeader>
         <div className="flex flex-col items-center gap-1.5">
-          <Button size="sm" onClick={() => startEditing('object', null)}>
+          <Button size="sm" onClick={() => requestRoute(() => startEditing('object', null))}>
             <PlusIcon data-icon />
             新建对象
           </Button>
@@ -121,7 +125,7 @@ function HomeSidebarGroups() {
                 icon={<Icon />}
                 label={o.title}
                 active={selectedObjectId === o._id}
-                onClick={() => selectObject(o._id)}
+                onClick={() => requestRoute(() => selectObject(o._id))}
               />
             )
           })}
@@ -135,7 +139,7 @@ function HomeSidebarGroups() {
               key={t._id}
               tag={t}
               active={selectedTagId === t._id}
-              onClick={() => selectTag(t._id)}
+              onClick={() => requestRoute(() => selectTag(t._id))}
             />
           ))}
         </>
@@ -150,6 +154,7 @@ function TagsSidebarList() {
   const tags = useTagsStore((s) => s.tags)
   const notes = useNotesStore((s) => s.notes)
   const selectedTagId = useUiStore((s) => s.selectedTagId)
+  const requestRoute = useUiStore((s) => s.requestRoute)
   const selectTag = useUiStore((s) => s.selectTag)
   const counts = useMemo(() => countNotesByTag(tags, notes), [tags, notes])
   const sorted = useMemo(
@@ -179,9 +184,55 @@ function TagsSidebarList() {
           tag={t}
           badge={counts.get(t._id) ?? 0}
           active={selectedTagId === t._id}
-          onClick={() => selectTag(t._id)}
+          onClick={() => requestRoute(() => selectTag(t._id))}
         />
       ))}
+    </div>
+  )
+}
+
+/** 归档视图：已归档对象列表（标题 + 来源图标 + 归档时间，按归档时间倒序，R1） */
+function ArchivedSidebarList() {
+  const loaded = useObjectsStore((s) => s.loaded)
+  const archivedObjects = useObjectsStore(useShallow(selectArchivedObjects))
+  const selectedObjectId = useUiStore((s) => s.selectedObjectId)
+  const requestRoute = useUiStore((s) => s.requestRoute)
+  const selectObject = useUiStore((s) => s.selectObject)
+  // 归档时间 = setArchived 时的 updatedAt（update 自动 touch）；最新归档在前
+  const sorted = useMemo(
+    () => [...archivedObjects].sort((a, b) => b.updatedAt - a.updatedAt),
+    [archivedObjects],
+  )
+
+  if (!loaded) return <ListSkeleton />
+  if (sorted.length === 0) {
+    return (
+      <Empty className="gap-2 p-3">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <ArchiveIcon />
+          </EmptyMedia>
+          <EmptyTitle>还没有归档对象</EmptyTitle>
+          <EmptyDescription>在对象详情点击「归档」，对象及笔记将移入此处（只读）</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-0.5">
+      {sorted.map((o) => {
+        const Icon = sourceTypeIcon(o.sourceType)
+        return (
+          <SidebarRow
+            key={o._id}
+            icon={<Icon />}
+            label={o.title}
+            trailing={formatTime(o.updatedAt)}
+            active={selectedObjectId === o._id}
+            onClick={() => requestRoute(() => selectObject(o._id))}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -194,11 +245,15 @@ export default function SidebarList() {
       <div className="flex min-h-full flex-col p-2">
         {view === 'home' && <HomeSidebarGroups />}
         {view === 'tags' && <TagsSidebarList />}
-        {(view === 'archived' || view === 'settings') && (
+        {view === 'archived' && <ArchivedSidebarList />}
+        {view === 'settings' && (
           <Empty className="gap-2 p-3">
             <EmptyHeader>
-              <EmptyTitle>{view === 'archived' ? '归档视图' : '设置视图'}</EmptyTitle>
-              <EmptyDescription>二期开放</EmptyDescription>
+              <EmptyMedia variant="icon">
+                <SettingsIcon />
+              </EmptyMedia>
+              <EmptyTitle>来源类型与偏好</EmptyTitle>
+              <EmptyDescription>请在右侧内容区管理来源类型与偏好设置</EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}

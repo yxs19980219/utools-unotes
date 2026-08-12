@@ -161,6 +161,54 @@ function main() {
     ok('光标行机制：光标移动后标题标记切换 显示/隐藏')
   }
 
+  // 8. GFM 表格（R10）：表头加粗 + 首行上边框 + 末行下边框 + 分隔符淡色
+  {
+    const tableDoc = [
+      '| 列A | 列B |',
+      '| --- | --- |',
+      '| 值1 | 值2 |',
+      '| 值3 | **值4** |',
+    ].join('\n')
+    const state3 = EditorState.create({ doc: tableDoc, selection: { anchor: 0 } })
+    const set3 = buildDecorations(state3)
+    const items3 = collect(set3)
+    const t = (n: number) => state3.doc.line(n)
+
+    const headCls = items3.filter((i) => i.from === t(1).from && i.to === t(1).to)
+    assert.equal(
+      headCls.some((i) => i.cls.includes('sn-md-tbl-head')),
+      true,
+      '表头行加粗样式',
+    )
+    assert.equal(
+      headCls.some((i) => i.cls.includes('sn-md-tbl-first')),
+      true,
+      '表首行上边框',
+    )
+    const sepCls = items3.filter((i) => i.from === t(2).from && i.to === t(2).to)
+    assert.equal(sepCls.some((i) => i.cls.includes('sn-md-tbl-sep')), true, '分隔行淡色')
+    const lastCls = items3.filter((i) => i.from === t(4).from && i.to === t(4).to)
+    assert.equal(
+      lastCls.some((i) => i.cls.includes('sn-md-tbl-last')),
+      true,
+      '末行下边框',
+    )
+    // 分隔符 | 淡色（表头行内所有 | 位置）
+    const headText = t(1).text
+    let idx = headText.indexOf('|')
+    let pipeDim = 0
+    while (idx !== -1) {
+      if (clsAt(items3, t(1).from + idx).includes('sn-md-dim')) pipeDim += 1
+      idx = headText.indexOf('|', idx + 1)
+    }
+    assert.equal(pipeDim, 3, '表头行 3 个 | 分隔符全部淡色')
+    // 单元格内粗体不做行内扫描（MVP 折中：整行表格样式，无 bold 类）
+    const boldRow = t(4).text
+    const boldPos = t(4).from + boldRow.indexOf('**值4**') + 2
+    assert.equal(clsAt(items3, boldPos).includes('sn-md-bold'), false, '单元格内不做行内扫描')
+    ok('表格：表头加粗/边框/分隔符淡色（R10）')
+  }
+
   console.log(`\n全部通过：${passed} 项断言`)
 }
 

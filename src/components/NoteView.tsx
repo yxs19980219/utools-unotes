@@ -9,8 +9,10 @@
  * - 标题/标签编辑低频：走卡片右侧操作（NoteCard 悬停「编辑」→ NoteForm），
  *   详情页不再放编辑按钮；「更新于」不单独占行（空间紧张），标签随正文区展示
  * - 归档笔记（AC9/R13）：纯只读，无任何编辑入口
+ * - 草稿保护（R11）：正文编辑中未保存改动自动暂存 localStorage（防抖 500ms），
+ *   重新进入恢复 + toast；切走经 DirtyGuard 确认（放弃/取消，AC8/AC9）
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowLeftIcon, PencilIcon, SaveIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -30,6 +32,34 @@ import { useObjectsStore } from '@/stores/objects'
 import { useTagsStore } from '@/stores/tags'
 import { useUiStore } from '@/stores/ui'
 
+/** 正文草稿 localStorage key（R11：`sn:draft:<noteId>`） */
+const DRAFT_PREFIX = 'sn:draft:'
+const draftKey = (noteId: string) => `${DRAFT_PREFIX}${noteId}`
+
+function readDraft(noteId: string): string | null {
+  try {
+    return localStorage.getItem(draftKey(noteId))
+  } catch {
+    return null
+  }
+}
+
+function writeDraft(noteId: string, content: string): void {
+  try {
+    localStorage.setItem(draftKey(noteId), content)
+  } catch {
+    /* 存储不可用时静默降级（草稿保护尽力而为） */
+  }
+}
+
+function clearDraft(noteId: string): void {
+  try {
+    localStorage.removeItem(draftKey(noteId))
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function NoteView({ noteId }: { noteId: string }) {
   const note = useNotesStore((s) => s.notes.find((n) => n._id === noteId))
   const object = useObjectsStore((s) =>
@@ -38,7 +68,12 @@ export default function NoteView({ noteId }: { noteId: string }) {
   const tags = useTagsStore((s) => s.tags)
   const closeNote = useUiStore((s) => s.closeNote)
   const selectObject = useUiStore((s) => s.selectObject)
+  const setPendingDirty = useUiStore((s) => s.setPendingDirty)
+  const requestRoute = useUiStore((s) => s.requestRoute)
   const updateNote = useNotesStore((s) => s.update)
+
+  /** 归档笔记只读（AC9/R13）：隐藏编辑入口 */
+  const readonly = object?.archived === true
 
   /** 正文编辑态：空正文默认直接进入；非空经「写正文」按钮进入 */
   const [editingBody, setEditingBody] = useState(false)
@@ -46,6 +81,54 @@ export default function NoteView({ noteId }: { noteId: string }) {
   const [saving, setSaving] = useState(false)
   // 编辑器插入 API（state 驱动：ref 变化不触发渲染，工具栏需要实时拿到实例）
   const [editorApi, setEditorApi] = useState<MarkdownInsertApi | null>(null)
+  // 草稿防抖定时器（R11）
+  const draftTimerRef = useRef<number | null>(null)
+
+  /** 编辑器可见（空正文恒进编辑；非空经「写正文」进入）；归档只读排除 */
+  const editingActive = !readonly && (editingBody || !note?.content)
+
+  /** 进入时恢复上次未保存的草稿（R11：重新进入该笔记 → 草稿恢复 + 提示） */
+  useEffect(() => {
+    const saved = readDraft(noteId)
+    const current = useNotesStore.getState().getById(noteId)?.content ?? ''
+    if (saved !== null && saved !== current) {
+      setDraft(saved)
+      toast.info('已恢复未保存的草稿')
+    }
+  }, [noteId])
+
+  /** 草稿防抖落盘（500ms）：编辑中且未保存改动时写入 localStorage */
+  useEffect(() => {
+    const note = useNotesStore.getState().getById(noteId)
+    if (!note || !editingActive) return
+    if (draft === note.content) return
+    if (draftTimerRef.current !== null) window.clearTimeout(draftTimerRef.current)
+    draftTimerRef.current = window.setTimeout(() => {
+      draftTimerRef.current = null
+      writeDraft(noteId, draft)
+    }, 500)
+  }, [draft, editingActive, noteId])
+
+  /** dirty 标志：编辑中且有实际改动 → 路由切换先确认（DirtyGuard） */
+  useEffect(() => {
+    const note = useNotesStore.getState().getById(noteId)
+    if (!note) return
+    const dirty = editingActive && draft !== note.content
+    if (dirty) {
+      // onDiscard：用户选「放弃」时清除已落盘草稿
+      setPendingDirty(true, () => clearDraft(noteId))
+    } else {
+      setPendingDirty(false)
+    }
+  }, [draft, editingActive, noteId, setPendingDirty])
+
+  /** 卸载清理：清防抖定时器；非放弃路径（保存后退出）清 dirty 标志 */
+  useEffect(() => {
+    return () => {
+      if (draftTimerRef.current !== null) window.clearTimeout(draftTimerRef.current)
+      setPendingDirty(false)
+    }
+  }, [setPendingDirty])
 
   if (!note) {
     return (
@@ -60,13 +143,13 @@ export default function NoteView({ noteId }: { noteId: string }) {
     )
   }
 
-  /** 归档笔记只读（AC9/R13）：隐藏编辑入口 */
-  const readonly = object?.archived === true
   /** 空正文直接进入编辑（可写即所见）；非空且未点编辑 → 只读 */
-  const showEditor = !readonly && (editingBody || !note.content)
+  const showEditor = editingActive
 
   const enterEdit = () => {
-    setDraft(note.content)
+    // 有未落盘/已落盘的草稿则恢复（与挂载时恢复逻辑一致）
+    const saved = readDraft(noteId)
+    setDraft(saved !== null && saved !== note.content ? saved : note.content)
     setEditingBody(true)
   }
 
@@ -75,6 +158,12 @@ export default function NoteView({ noteId }: { noteId: string }) {
     setSaving(true)
     try {
       await updateNote({ ...note, content: draft })
+      // 保存成功：清草稿（本地与 store 标志；dirty effect 随后自动复位）
+      clearDraft(noteId)
+      if (draftTimerRef.current !== null) {
+        window.clearTimeout(draftTimerRef.current)
+        draftTimerRef.current = null
+      }
       toast.success('正文已保存')
       setEditingBody(false)
     } catch (err) {
@@ -82,6 +171,13 @@ export default function NoteView({ noteId }: { noteId: string }) {
     } finally {
       setSaving(false)
     }
+  }
+
+  /** 放弃当前编辑（取消按钮）：清草稿 + 退出编辑态 */
+  const cancelEdit = () => {
+    clearDraft(noteId)
+    setPendingDirty(false)
+    setEditingBody(false)
   }
 
   const tagChips = note.tags
@@ -92,13 +188,13 @@ export default function NoteView({ noteId }: { noteId: string }) {
     <div className="flex min-h-0 flex-1 flex-col">
       {/* 顶部工具行：返回 + 归属对象 + 标题（归档只读标记） */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-2 py-1.5">
-        <Button variant="ghost" size="icon-sm" aria-label="返回" onClick={closeNote}>
+        <Button variant="ghost" size="icon-sm" aria-label="返回" onClick={() => requestRoute(closeNote)}>
           <ArrowLeftIcon data-icon />
         </Button>
         {object && (
           <button
             type="button"
-            onClick={() => selectObject(object._id)}
+            onClick={() => requestRoute(() => selectObject(object._id))}
             className="max-w-36 truncate rounded px-1 text-xs text-muted-foreground underline-offset-2 hover:bg-muted hover:text-foreground hover:underline"
             title={object.title}
           >
@@ -137,7 +233,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setEditingBody(false)}
+                onClick={cancelEdit}
                 disabled={saving}
               >
                 取消

@@ -314,3 +314,9 @@ export async function getSourceTypes(): Promise<SourceType[]> {
 export async function saveSourceTypes(types: SourceType[]): Promise<Setting> {
   return saveSetting(SETTING_KEYS.sourceTypes, types)
 }
+
+/** 引用某来源类型的对象数（设置页删除确认：AC5 提示引用计数） */
+export async function countObjectsBySourceType(sourceType: string): Promise<number> {
+  const objects = await listObjects()
+  return objects.filter((o) => o.sourceType === sourceType).length
+}

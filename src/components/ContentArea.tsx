@@ -7,13 +7,14 @@
  * 归档/设置为二期：视图置灰，此处兜底空态。
  */
 import { useMemo } from 'react'
-import { BookOpenIcon, SearchIcon, TagIcon } from 'lucide-react'
+import { ArchiveIcon, BookOpenIcon, SearchIcon, TagIcon } from 'lucide-react'
 
 import NoteCardList from '@/components/NoteCardList'
 import NoteForm from '@/components/NoteForm'
 import NoteView from '@/components/NoteView'
 import ObjectDetail from '@/components/ObjectDetail'
 import ObjectForm from '@/components/ObjectForm'
+import SettingsView from '@/components/SettingsView'
 import {
   Empty,
   EmptyDescription,
@@ -142,7 +143,7 @@ export default function ContentArea() {
     return <SearchResults />
   }
 
-  // 对象详情（R11）
+  // 对象详情（R11；归档对象 = 只读语义，ObjectDetail 内部按 object.archived 判定）
   if (selectedObjectId) {
     return <ObjectDetail objectId={selectedObjectId} />
   }
@@ -181,12 +182,21 @@ export default function ContentArea() {
       </Empty>
     )
   }
-  return (
-    <Empty className="gap-2">
-      <EmptyHeader>
-        <EmptyTitle>{view === 'archived' ? '归档视图' : '设置视图'}</EmptyTitle>
-        <EmptyDescription>二期开放</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
-  )
+  if (view === 'archived') {
+    return (
+      <Empty className="gap-2">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <ArchiveIcon />
+          </EmptyMedia>
+          <EmptyTitle>选择左侧一个已归档对象</EmptyTitle>
+          <EmptyDescription>
+            归档对象及其笔记为只读；点击「恢复」可将其移回活跃列表
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+  // 设置视图（R6：来源类型管理 + 偏好）
+  return <SettingsView />
 }

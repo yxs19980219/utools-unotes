@@ -9,6 +9,7 @@ import { resetDbForTest } from '../src/services/db.ts'
 import { bootstrapStores } from '../src/stores/bootstrap.ts'
 import { useObjectsStore, selectPinnedObjects } from '../src/stores/objects.ts'
 import { useNotesStore, selectNotesByObject } from '../src/stores/notes.ts'
+import { useSettingsStore } from '../src/stores/settings.ts'
 import { countNotesByTag, useTagsStore } from '../src/stores/tags.ts'
 import { useUiStore } from '../src/stores/ui.ts'
 
@@ -198,6 +199,94 @@ async function main() {
   useUiStore.getState().selectObject(object._id)
   assert.equal(useUiStore.getState().search.active, false, '选中对象退出搜索态')
   ok('搜索态进入/退出排序迁移 + 选中退出搜索')
+
+  // ---- 二期：设置域（来源类型枚举 + 偏好，R7/R8/R9） ----
+  console.log('[11] 设置域：来源类型枚举 + 偏好')
+  assert.equal(useSettingsStore.getState().loaded, true, 'bootstrap 已加载设置域')
+  assert.equal(useSettingsStore.getState().sourceTypes.length, 6, '默认内置 6 种')
+
+  // 新增（去重校验 + 自定义 id 生成）
+  const podcast = await useSettingsStore.getState().addSourceType('播客')
+  assert.equal(podcast.builtin, false)
+  assert.equal(useSettingsStore.getState().sourceTypes.length, 7)
+  await assert.rejects(
+    useSettingsStore.getState().addSourceType('播客'),
+    /已存在/,
+    '同名去重拒绝',
+  )
+  // id 冲突后缀（label 不同但 slugify 撞内置 id）
+  const book2 = await useSettingsStore.getState().addSourceType('Book')
+  assert.notEqual(book2.id, 'book', 'slug 撞内置 id 时追加后缀')
+  ok('枚举新增 + 精确去重 + id 冲突后缀')
+
+  // 重命名（自定义可改，内置锁定）
+  await useSettingsStore.getState().renameSourceType(podcast.id, '播客频道')
+  assert.equal(useSettingsStore.getState().getById(podcast.id)?.label, '播客频道')
+  await assert.rejects(
+    useSettingsStore.getState().renameSourceType('book', '改名内置'),
+    /内置类型不可改名/,
+  )
+  ok('重命名：自定义可改 / 内置锁定')
+
+  // 引用计数 + 强制删除（AC5）
+  await useObjectsStore.getState().create({
+    title: '播客引用对象',
+    sourceType: podcast.id,
+  })
+  assert.equal(await useSettingsStore.getState().countReferences(podcast.id), 1)
+  await useSettingsStore.getState().removeSourceType(podcast.id)
+  assert.ok(!useSettingsStore.getState().getById(podcast.id), '枚举已删')
+  // 被引用对象保留原类型字符串（删除后筛选器不再出现，对象字段不受影响）
+  assert.equal(useObjectsStore.getState().objects.some((o) => o.sourceType === podcast.id), true)
+  await assert.rejects(
+    useSettingsStore.getState().removeSourceType('book'),
+    /内置类型不可删除/,
+  )
+  ok('删除：引用计数 + 强制删除保留对象字段 / 内置锁定')
+
+  // 偏好（R9）：savePrefs + applyPrefs（relevance 不覆盖）
+  await useSettingsStore.getState().savePrefs({ defaultSort: 'created' })
+  assert.equal(useSettingsStore.getState().prefs.defaultSort, 'created')
+  useUiStore.getState().setSort('updated')
+  useUiStore.getState().applyPrefs({ defaultSort: 'created' })
+  assert.equal(useUiStore.getState().sort, 'created', '偏好应用默认排序')
+  useUiStore.getState().setSearch(true, 'x')
+  useUiStore.getState().applyPrefs({ defaultSort: 'title' })
+  assert.equal(useUiStore.getState().sort, 'relevance', '搜索态不被偏好覆盖')
+  useUiStore.getState().setSearch(false, '')
+  assert.equal(useUiStore.getState().preSearchSort, 'title', '退出搜索恢复偏好排序')
+  ok('偏好：默认排序保存 + 应用（搜索态不覆盖）')
+
+  // ---- 二期：草稿拦截（R11/R12 requestRoute/discardDirty） ----
+  console.log('[12] 草稿拦截（requestRoute / discardDirty）')
+  assert.equal(useUiStore.getState().pendingDirty, false)
+  useUiStore.getState().setPendingDirty(true, () => 'discarded')
+  // 路由请求被暂存，不立即执行
+  let executed = false
+  useUiStore.getState().requestRoute(() => {
+    executed = true
+  })
+  assert.equal(executed, false, 'pendingDirty 时路由请求被拦截')
+  assert.ok(useUiStore.getState().dirtyRoute !== null, '请求暂存到 dirtyRoute')
+  // 取消：留在原处，请求未执行
+  useUiStore.getState().cancelRoute()
+  assert.equal(executed, false)
+  assert.equal(useUiStore.getState().dirtyRoute, null)
+  // 放弃：执行 onDiscard + 暂存请求
+  useUiStore.getState().requestRoute(() => {
+    executed = true
+  })
+  useUiStore.getState().discardDirty()
+  assert.equal(executed, true, '放弃后执行暂存请求')
+  assert.equal(useUiStore.getState().pendingDirty, false)
+  assert.equal(useUiStore.getState().dirtyRoute, null)
+  // 无 dirty 时直接执行
+  executed = false
+  useUiStore.getState().requestRoute(() => {
+    executed = true
+  })
+  assert.equal(executed, true, '无 dirty 时请求直接执行')
+  ok('草稿拦截：拦截/取消/放弃/直通')
 
   console.log(`\n✅ stores 冒烟通过（${passed} 项断言）`)
 }

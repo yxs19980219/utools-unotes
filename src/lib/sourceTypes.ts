@@ -3,9 +3,9 @@
  *
  * - sourceTypeIcon：内置六种类型的图标映射（自定义类型回退通用图标）
  * - sourceTypeLabel：id → 中文展示名（读自 db 枚举，含自定义；未知 id 回退原样）
- * - useSourceTypes：db 枚举的轻量 hook（模块级缓存）；设置域二期接入 store 后替换
+ * - useSourceTypes：读 settings store（二期改造：单一数据源，设置页增删改即时生效，
+ *   替代一期模块级缓存——后者无失效机制，设置改动不生效）
  */
-import { useEffect, useState } from 'react'
 import {
   BookOpenIcon,
   FileTextIcon,
@@ -16,8 +16,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
-import { getSourceTypes } from '@/services/db'
-import { BUILTIN_SOURCE_TYPES, type SourceType } from '@/types'
+import { useSettingsStore } from '@/stores/settings'
+import type { SourceType } from '@/types'
 
 const BUILTIN_ICONS: Record<string, LucideIcon> = {
   book: BookOpenIcon,
@@ -38,18 +38,7 @@ export function sourceTypeLabel(id: string, sourceTypes: SourceType[]): string {
   return sourceTypes.find((st) => st.id === id)?.label ?? id
 }
 
-let cached: SourceType[] | null = null
-
-/** db 来源类型枚举（异步一次加载，模块级缓存；跨组件共享同一份） */
+/** db 来源类型枚举（settings store 投影：设置页增删改即时生效，R8） */
 export function useSourceTypes(): SourceType[] {
-  const [types, setTypes] = useState<SourceType[]>(cached ?? BUILTIN_SOURCE_TYPES)
-  useEffect(() => {
-    if (!cached) {
-      void getSourceTypes().then((t) => {
-        cached = t
-        setTypes(t)
-      })
-    }
-  }, [])
-  return types
+  return useSettingsStore((s) => s.sourceTypes)
 }

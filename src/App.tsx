@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 
 import ContentArea from '@/components/ContentArea'
 import ContentHeader from '@/components/ContentHeader'
+import DirtyGuard from '@/components/DirtyGuard'
 import SidebarList from '@/components/SidebarList'
 import ViewSwitcher from '@/components/ViewSwitcher'
 import { Toaster } from '@/components/ui/sonner'
@@ -72,6 +73,7 @@ export default function App() {
       </main>
 
       <Toaster />
+      <DirtyGuard />
       </div>
     </TooltipProvider>
   )

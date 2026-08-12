@@ -6,7 +6,16 @@
  * 下方 = 笔记卡片列表（selectNotesByObject，时间倒序）+ [＋新笔记]（带对象上下文）。
  * 列表恒为列表形态（AC3），1 条与 N 条渲染一致，由 NoteCardList 保证。
  */
-import { CalendarIcon, LinkIcon, PencilIcon, PinIcon, Trash2Icon, UserIcon } from 'lucide-react'
+import {
+  ArchiveIcon,
+  ArchiveRestoreIcon,
+  CalendarIcon,
+  LinkIcon,
+  PencilIcon,
+  PinIcon,
+  Trash2Icon,
+  UserIcon,
+} from 'lucide-react'
 import { toast } from 'sonner'
 
 import NoteCardList from '@/components/NoteCardList'
@@ -40,9 +49,11 @@ export default function ObjectDetail({ objectId }: { objectId: string }) {
   const tags = useTagsStore((s) => s.tags)
   const sourceTypes = useSourceTypes()
   const togglePinned = useObjectsStore((s) => s.togglePinned)
+  const setArchived = useObjectsStore((s) => s.setArchived)
   const removeObject = useObjectsStore((s) => s.remove)
   const selectObject = useUiStore((s) => s.selectObject)
   const startEditing = useUiStore((s) => s.startEditing)
+  const requestRoute = useUiStore((s) => s.requestRoute)
 
   if (!object) {
     return (
@@ -68,6 +79,27 @@ export default function ObjectDetail({ objectId }: { objectId: string }) {
     selectObject(null)
   }
 
+  const handleArchive = async () => {
+    try {
+      await setArchived(object._id, true)
+      toast.success(`已归档「${object.title}」（${notes.length} 条笔记转只读）`)
+    } catch (err) {
+      toast.error(`归档失败：${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  const handleRestore = async () => {
+    try {
+      await setArchived(object._id, false)
+      toast.success(`已恢复「${object.title}」（如需上首页请重新钉住）`)
+    } catch (err) {
+      toast.error(`恢复失败：${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  /** 只读语义（R4）：归档对象的详情/笔记全部不可编辑 */
+  const readonly = object.archived
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* 来源元数据条 */}
@@ -79,7 +111,36 @@ export default function ObjectDetail({ objectId }: { objectId: string }) {
           <h2 className="min-w-0 flex-1 truncate text-sm font-medium" title={object.title}>
             {object.title}
           </h2>
-          {/* 操作：钉住 / 编辑 / 删除 */}
+          {readonly && (
+            <Badge variant="outline" className="shrink-0 text-[0.7rem] font-normal text-muted-foreground">
+              已归档（只读）
+            </Badge>
+          )}
+          {/* 操作：活跃对象 = 钉住/编辑/归档/删除；归档对象 = 仅「恢复」（R1-R3） */}
+          {readonly ? (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm">
+                  <ArchiveRestoreIcon data-icon />
+                  恢复
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>恢复对象「{object.title}」？</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    将移回活跃列表（不会自动钉住，需重新钉住才能上首页），其下{" "}
+                    {notes.length} 条笔记恢复可编辑。
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => void handleRestore()}>恢复</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : (
+            <>
           <Button
             variant={object.pinned ? 'default' : 'outline'}
             size="icon-sm"
@@ -95,10 +156,34 @@ export default function ObjectDetail({ objectId }: { objectId: string }) {
             size="icon-sm"
             aria-label="编辑对象"
             title="编辑"
-            onClick={() => startEditing('object', object._id)}
+            onClick={() => requestRoute(() => startEditing('object', object._id))}
           >
             <PencilIcon data-icon />
           </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label="归档对象"
+                title="归档"
+              >
+                <ArchiveIcon data-icon />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>将归档「{object.title}」？</AlertDialogTitle>
+                <AlertDialogDescription>
+                  其下 {notes.length} 条笔记将一并转为只读。归档后可在侧边栏「归档」视图恢复。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction onClick={() => void handleArchive()}>归档</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button
@@ -129,6 +214,8 @@ export default function ObjectDetail({ objectId }: { objectId: string }) {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+            </>
+          )}
         </div>
 
         {/* 来源元数据 + 标签 */}
@@ -172,13 +259,15 @@ export default function ObjectDetail({ objectId }: { objectId: string }) {
         )}
       </div>
 
-      {/* 笔记区标题行：计数 + 新建笔记（带对象上下文） */}
+      {/* 笔记区标题行：计数 + 新建笔记（带对象上下文；归档只读隐藏） */}
       <div className="flex shrink-0 items-center justify-between px-3 py-1.5">
         <span className="text-xs text-muted-foreground">笔记 · {notes.length}</span>
-        <Button size="sm" onClick={() => startEditing('note', null)}>
-          <span className="text-sm leading-none">＋</span>
-          新笔记
-        </Button>
+        {!readonly && (
+          <Button size="sm" onClick={() => requestRoute(() => startEditing('note', null))}>
+            <span className="text-sm leading-none">＋</span>
+            新笔记
+          </Button>
+        )}
       </div>
 
       {/* 卡片列表（ScrollArea 内部滚动） */}

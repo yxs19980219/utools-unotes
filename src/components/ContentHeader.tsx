@@ -80,13 +80,27 @@ export default function ContentHeader() {
   const setSort = useUiStore((s) => s.setSort)
   const setSourceFilter = useUiStore((s) => s.setSourceFilter)
   const startEditing = useUiStore((s) => s.startEditing)
+  const requestRoute = useUiStore((s) => s.requestRoute)
   const sourceTypes = useSourceTypes()
 
   // 来源筛选：标签跨对象列表语境与搜索态均显示（搜索态与 type: 语法叠加，R17）
   const showSourceFilter = selectedTagId !== null || searchActive
 
+  const view = useUiStore((s) => s.view)
+
   // 编辑态：全内容区被表单替换，标题行右侧操作全部隐藏（design 交互细节 5）
   if (editing) {
+    return (
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+        <h1 className="min-w-0 flex-1 truncate text-sm font-medium" title={title}>
+          {title}
+        </h1>
+      </header>
+    )
+  }
+
+  // 设置视图：无列表语境，右侧操作（排序/筛选/新建/搜索）隐藏
+  if (view === 'settings') {
     return (
       <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
         <h1 className="min-w-0 flex-1 truncate text-sm font-medium" title={title}>
@@ -148,12 +162,12 @@ export default function ContentHeader() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => startEditing('note', null)}>
+            <DropdownMenuItem onClick={() => requestRoute(() => startEditing('note', null))}>
               <FileTextIcon data-icon />
               新建笔记
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => startEditing('object', null)}>
+            <DropdownMenuItem onClick={() => requestRoute(() => startEditing('object', null))}>
               <FolderPlusIcon data-icon />
               新建对象
             </DropdownMenuItem>

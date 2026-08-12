@@ -89,7 +89,14 @@ export interface SourceType {
 /** 设置文档 key 常量 */
 export const SETTING_KEYS = {
   sourceTypes: 'sourceTypes',
+  prefs: 'prefs',
 } as const
+
+/** 偏好设置（R9：MVP 仅默认排序；relevance 仅搜索态，不进偏好） */
+export interface Prefs {
+  /** 内容区列表默认排序 */
+  defaultSort: 'updated' | 'created' | 'title'
+}
 
 /** 内置来源类型默认枚举（R4） */
 export const BUILTIN_SOURCE_TYPES: SourceType[] = [

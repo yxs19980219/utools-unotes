@@ -3,7 +3,7 @@
   "name": "phase2-archive-settings",
   "title": "二期：归档与设置视图 + 编辑器增强",
   "description": "归档视图（对象级归档+只读）、设置视图（来源类型枚举管理）、编辑器高级语法与草稿保护、遗留项确认",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

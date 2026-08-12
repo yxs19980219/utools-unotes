@@ -10,7 +10,7 @@
  *   全局持久（跨视图保留偏好），relevance 仅搜索态启用（阶段 7）
  */
 import { create } from 'zustand'
-import type { SearchSort } from '../types.ts'
+import type { Prefs, SearchSort } from '../types.ts'
 
 /** 顶级视图（R5 分段控件）；archived/settings 为二期，UI 置灰 */
 export type View = 'home' | 'tags' | 'archived' | 'settings'
@@ -45,6 +45,28 @@ interface UiState {
   /** 当前来源类型筛选（'all' = 不过滤；仅跨对象列表语境生效） */
   sourceFilter: string
 
+  /**
+   * 未保存改动标记（R11/R12 草稿保护）：编辑中的 NoteView/NoteForm 置位；
+   * 路由切换动作（setView/selectObject/selectTag/closeNote/startEditing）
+   * 经 requestRoute 包裹：pendingDirty 时请求暂存到 dirtyRoute，由 DirtyGuard
+   * 弹 AlertDialog（放弃/取消），不直接执行。
+   */
+  pendingDirty: boolean
+  /** 被拦截的路由请求（DirtyGuard 消费；非空 = 显示确认框） */
+  dirtyRoute: { action: () => void } | null
+  /** 放弃时的清理回调（组件注册：清 localStorage 草稿等） */
+  dirtyOnDiscard: (() => void) | null
+
+  setPendingDirty(v: boolean, onDiscard?: () => void): void
+  /** 路由请求入口：pendingDirty 时暂存（等待用户确认），否则立即执行 */
+  requestRoute(action: () => void): void
+  /** 确认框「取消」：留在原处，清暂存请求 */
+  cancelRoute(): void
+  /** 确认框「放弃」：执行 onDiscard 清理 + 执行暂存请求 */
+  discardDirty(): void
+  /** 偏好默认排序应用（R9：启动时 bootstrap 调用 / 设置页保存时调用） */
+  applyPrefs(prefs: Prefs): void
+
   setView(view: View): void
   setSort(sort: SearchSort): void
   setSourceFilter(sourceFilter: string): void
@@ -74,6 +96,44 @@ export const useUiStore = create<UiState>()((set, get) => ({
 
   setSort: (sort) => set({ sort }),
   setSourceFilter: (sourceFilter) => set({ sourceFilter }),
+
+  pendingDirty: false,
+  dirtyRoute: null,
+  dirtyOnDiscard: null,
+
+  setPendingDirty: (v, onDiscard) =>
+    set((s) => {
+      if (v) {
+        return { pendingDirty: true, dirtyOnDiscard: onDiscard ?? s.dirtyOnDiscard }
+      }
+      // 变 false（保存成功/明确放弃）：清标志与暂存请求
+      return { pendingDirty: false, dirtyRoute: null, dirtyOnDiscard: null }
+    }),
+
+  requestRoute: (action) => {
+    if (get().pendingDirty) {
+      set({ dirtyRoute: { action } })
+    } else {
+      action()
+    }
+  },
+
+  cancelRoute: () => set({ dirtyRoute: null }),
+
+  discardDirty: () => {
+    const route = get().dirtyRoute
+    const onDiscard = get().dirtyOnDiscard
+    set({ pendingDirty: false, dirtyRoute: null, dirtyOnDiscard: null })
+    onDiscard?.()
+    route?.action()
+  },
+
+  applyPrefs: (prefs) =>
+    set((s) => ({
+      // relevance 仅搜索态，不被偏好覆盖（preSearchSort 始终恢复浏览态偏好）
+      sort: s.sort === 'relevance' ? s.sort : prefs.defaultSort,
+      preSearchSort: prefs.defaultSort,
+    })),
 
   setView: (view) => {
     // 切视图退出搜索态（R5：每视图只显示自己的内容）

@@ -8,7 +8,9 @@
 import { getDb, isNoteDoc, isObjectDoc, isTagDoc } from '../services/db.ts'
 import { useNotesStore } from './notes.ts'
 import { useObjectsStore } from './objects.ts'
+import { useSettingsStore } from './settings.ts'
 import { useTagsStore } from './tags.ts'
+import { useUiStore } from './ui.ts'
 
 let inflight: Promise<void> | null = null
 
@@ -22,6 +24,10 @@ export function bootstrapStores(): Promise<void> {
         useObjectsStore.getState().hydrate(docs.filter(isObjectDoc))
         useNotesStore.getState().hydrate(docs.filter(isNoteDoc))
         useTagsStore.getState().hydrate(docs.filter(isTagDoc))
+        // 设置域：来源类型枚举 + 偏好（R8 单一数据源 / R9 默认排序）
+        await useSettingsStore.getState().load()
+        // 偏好合并：启动时默认排序应用（relevance 仅搜索态，不覆盖）
+        useUiStore.getState().applyPrefs(useSettingsStore.getState().prefs)
       } finally {
         inflight = null
       }

@@ -7,21 +7,16 @@
  * - 全部样式走语义色 CSS 变量（--foreground/--muted-foreground/--border/--muted/--accent
  *   /--primary），禁硬编码色值；暗色模式随 html.dark Token（附录 A）自动切换
  * - 语法覆盖（MVP）：标题 #~####、粗体/斜体/行内代码、链接、列表（含任务复选框）、
- *   引用、分隔线、代码块围栏；表格等复杂语法保持纯文本
+ *   引用、分隔线、代码块围栏、GFM 表格（R10：表头加粗/边框/分隔符淡色，
+ *   单元格内不 scanInline——MVP 折中，保持文本流可编辑）
  * - 光标行机制（Obsidian Live Preview 同思路）：光标行显示淡色标题标记，非光标行
  *   标记隐藏（opacity 0，占位保留）但标题样式保留；仅光标行变化或文档变化时重算
  * - 性能策略：ViewPlugin 内基于 doc 全量正则 + RangeSetBuilder 重建，千行内无感；
  *   光标移动只在光标行变化时触发重算（selectionSet 但同行的移动跳过）
  */
 import { RangeSetBuilder, type EditorState, type Extension } from '@codemirror/state'
-import {
-  Decoration,
-  EditorView,
-  ViewPlugin,
-  WidgetType,
-  type DecorationSet,
-  type ViewUpdate,
-} from '@codemirror/view'
+import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view'
+import { TABLE_ROW_RE, TABLE_SEP_RE } from '../../lib/markdown.ts'
 
 /* ------------------------------------------------------------------ */
 /* 编辑器主题（chrome + 装饰类样式）：全部语义色                          */
@@ -73,7 +68,8 @@ export const markdownEditorTheme: Extension = EditorView.theme({
     padding: '0 2px',
   },
   '.sn-md-link': {
-    color: 'var(--primary)',
+    // R13（用户拍板）：链接 = 前景色 + 下划线（浅色模式可见；一期 --primary 浅灰不可见）
+    color: 'var(--foreground)',
     textDecoration: 'underline',
     textUnderlineOffset: '2px',
   },
@@ -118,6 +114,21 @@ export const markdownEditorTheme: Extension = EditorView.theme({
     width: '1em',
     color: 'inherit',
   },
+  /* GFM 表格（R10）：整表细边框 + muted 背景；表头行加粗 + 下边框 */
+  '.sn-md-tbl': {
+    backgroundColor: 'color-mix(in oklab, var(--muted) 45%, transparent)',
+    borderLeft: '1px solid var(--border)',
+    borderRight: '1px solid var(--border)',
+    padding: '0 2px',
+  },
+  '.sn-md-tbl-first': { borderTop: '1px solid var(--border)' },
+  '.sn-md-tbl-last': { borderBottom: '1px solid var(--border)' },
+  '.sn-md-tbl-head': {
+    fontWeight: '600',
+    borderBottom: '1px solid var(--border)',
+  },
+  /* 表格分隔行（|---|---|）：整行淡色 */
+  '.sn-md-tbl-sep': { color: 'var(--muted-foreground)', opacity: '0.45' },
 })
 
 /* ------------------------------------------------------------------ */
@@ -166,8 +177,7 @@ class TaskBoxWidget extends WidgetType {
 }
 
 /** 无序列表标记：源文本 `- ` 替换显示为项目符号 `•`（Obsidian 同款，源 markdown 不变） */
-class BulletWidget extends WidgetType {
-  eq(): boolean {
+class BulletWidget extends WidgetType {  eq(): boolean {
     return true
   }
 
@@ -210,6 +220,63 @@ const CODE_SPAN_RE = /`[^`\n]+`/g
  */
 const INLINE_RE =
   /(\*\*[^*]+\*\*|__[^_]+__)|(\*[^*]+\*|_[^_]+_)|(\[[^\]\n]+\]\([^)\n]+\))/g
+
+/**
+ * 标记一行表格（R10）：整行边框/背景 + 表头加粗；行内 `|` 分隔符淡色。
+ * 单元格内不 scanInline（MVP 折中：保持文本流可编辑，不做单元格内语法）。
+ */
+function markTableRow(
+  builder: RangeSetBuilder<Decoration>,
+  line: { text: string; from: number; to: number },
+  kind: 'head' | 'sep' | 'row',
+  isFirst: boolean,
+  isLast: boolean,
+): void {
+  const classes = ['sn-md-tbl']
+  if (kind === 'head') {
+    classes.push('sn-md-tbl-head')
+    if (isFirst) classes.push('sn-md-tbl-first')
+  } else if (kind === 'sep') {
+    classes.push('sn-md-tbl-sep')
+  }
+  if (isLast) classes.push('sn-md-tbl-last')
+  builder.add(line.from, line.to, Decoration.mark({ class: classes.join(' ') }))
+  // 单元格分隔符 `|` 淡色（分隔行整行已淡色，跳过）
+  if (kind !== 'sep') {
+    let idx = line.text.indexOf('|')
+    while (idx !== -1) {
+      builder.add(line.from + idx, line.from + idx + 1, dimMark)
+      idx = line.text.indexOf('|', idx + 1)
+    }
+  }
+}
+
+/**
+ * 块级解析辅助：当前行（n）是表格分隔行且上一行是表头行 → 收集整表并标记，
+ * 返回表结束后的下一行号（已处理的行跳过）；非表格返回 n。
+ */
+function scanTable(
+  builder: RangeSetBuilder<Decoration>,
+  doc: { lines: number; line(n: number): { text: string; from: number; to: number } },
+  n: number,
+): number {
+  const sepLine = doc.line(n)
+  if (n === 1 || !TABLE_SEP_RE.test(sepLine.text)) return n
+  const headLine = doc.line(n - 1)
+  if (!TABLE_ROW_RE.test(headLine.text)) return n
+  // 收集后续数据行
+  let last = n + 1
+  while (last <= doc.lines && TABLE_ROW_RE.test(doc.line(last).text)) last++
+  // 表头（表格第一行 = 上一行）
+  markTableRow(builder, headLine, 'head', true, false)
+  // 分隔行（无数据行时分隔行闭合下边框）
+  markTableRow(builder, sepLine, 'sep', false, last === n + 1)
+  // 数据行（最后一行闭合下边框）
+  for (let r = n + 1; r < last; r++) {
+    markTableRow(builder, doc.line(r), 'row', false, r === last - 1)
+  }
+  return last
+}
 
 /* ------------------------------------------------------------------ */
 /* 扫描器                                                               */
@@ -305,6 +372,13 @@ export function buildDecorations(state: EditorState): DecorationSet {
       builder.add(from, from + markLen, n === cursorLine ? dimMark : hiddenMark)
       builder.add(from + markLen, line.to, headingMarks[h[1].length - 1])
       scanInline(builder, from + markLen, text.slice(markLen))
+      continue
+    }
+
+    // GFM 表格（R10）：分隔行 + 上一行表头 → 整表标记（表头加粗/边框/分隔符淡色）
+    const tableNext = scanTable(builder, doc, n)
+    if (tableNext !== n) {
+      n = tableNext - 1
       continue
     }
 

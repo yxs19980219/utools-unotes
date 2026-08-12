@@ -61,10 +61,11 @@ interface NoteCardProps {
 function NoteCard({ note, object, tagById, sourceLabel, crossObject }: NoteCardProps) {
   const openNote = useUiStore((s) => s.openNote)
   const startEditing = useUiStore((s) => s.startEditing)
+  const requestRoute = useUiStore((s) => s.requestRoute)
   const removeNote = useNotesStore((s) => s.remove)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
-  /** 归档笔记只读（AC9）：隐藏编辑/删除入口，展示「已归档」角标 */
+  /** 归档笔记只读（AC9/R14）：隐藏编辑入口，保留删除（用户拍板 2a） */
   const readonly = object?.archived === true
 
   const tagChips = useMemo(
@@ -82,28 +83,29 @@ function NoteCard({ note, object, tagById, sourceLabel, crossObject }: NoteCardP
     <div
       role="button"
       tabIndex={0}
-      onClick={() => openNote(note._id)}
+      onClick={() => requestRoute(() => openNote(note._id))}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') openNote(note._id)
+        if (e.key === 'Enter') requestRoute(() => openNote(note._id))
       }}
       className="group flex cursor-pointer flex-col gap-1 rounded-lg border border-border bg-card p-2.5 transition-colors hover:bg-accent/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       {/* 标题行 + 悬停操作 */}
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{note.title}</span>
-        {!readonly && (
-          <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+        <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+          {!readonly && (
             <Button
               variant="ghost"
               size="icon-xs"
               aria-label="编辑笔记"
               onClick={(e) => {
                 e.stopPropagation()
-                startEditing('note', note._id)
+                requestRoute(() => startEditing('note', note._id))
               }}
             >
               <PencilIcon data-icon />
             </Button>
+          )}
             <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
               <AlertDialogTrigger asChild>
                 <Button
@@ -135,7 +137,6 @@ function NoteCard({ note, object, tagById, sourceLabel, crossObject }: NoteCardP
               </AlertDialogContent>
             </AlertDialog>
           </span>
-        )}
       </div>
 
       {/* 摘要（前 2 行截断） */}

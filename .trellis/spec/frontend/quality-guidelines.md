@@ -57,6 +57,7 @@ npm run smoke:decorations# node scripts/smoke-decorations.ts（编辑器装饰�
 | `smoke-decorations.ts` | 标题（光标行淡色/非光标行隐藏）、粗斜/行内代码/链接、任务复选框 Widget、引用/分隔线/代码块/列表标记 | 编辑器装饰 |
 
 写法约定：`node:assert/strict` + 手写 `ok()` 计数，`main().catch(err => process.exit(1))` 失败即非零退出；每个脚本开头 `resetDbForTest()` 隔离数据。**新契约必须带冒烟断言**（如新增搜索语法、新增跨域编排），改动既有契约时先跑对应脚本确认未回归。
+- **node 直测模块禁 `@/` 路径别名**：smoke 脚本用 `node` 直接加载被测 TS 源码（无 bundler），路径别名（`@/`）不解析；且 ESM 要求显式扩展名。被 smoke 直测的模块（如 `markdownDecorations.ts`）内部 import 必须用相对路径 + `.ts` 后缀（vite 构建侧不受影响，`@/` 仍可用）——二期曾踩：装饰器新 import 用 `@/lib/...` 导致 smoke-decorations ERR_MODULE_NOT_FOUND。
 
 ---
 
