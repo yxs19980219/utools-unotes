@@ -59,6 +59,10 @@ npm run smoke:decorations# node scripts/smoke-decorations.ts（编辑器装饰�
 写法约定：`node:assert/strict` + 手写 `ok()` 计数，`main().catch(err => process.exit(1))` 失败即非零退出；每个脚本开头 `resetDbForTest()` 隔离数据。**新契约必须带冒烟断言**（如新增搜索语法、新增跨域编排），改动既有契约时先跑对应脚本确认未回归。
 - **node 直测模块禁 `@/` 路径别名**：smoke 脚本用 `node` 直接加载被测 TS 源码（无 bundler），路径别名（`@/`）不解析；且 ESM 要求显式扩展名。被 smoke 直测的模块（如 `markdownDecorations.ts`）内部 import 必须用相对路径 + `.ts` 后缀（vite 构建侧不受影响，`@/` 仍可用）——二期曾踩：装饰器新 import 用 `@/lib/...` 导致 smoke-decorations ERR_MODULE_NOT_FOUND。
 - **浏览器测试 hook 约定**：无 uTools 环境（vite dev）时 `main.tsx` 暴露 `window.__snDebug.setSearch(query)`（注入 ui store 的 setSearch），供 ui-smoke 触发搜索态断言；uTools 内不注入。新增需要测试触发的全局状态可沿用此模式。
+- **ui-smoke 条件等待约定（08-12 起）**：除防抖落盘等待（计时器本质，保留固定 900ms 余量）外，一律用条件等待替代固定 `waitForTimeout`：`page.waitForFunction(fn, arg, { timeout })`（**参数顺序 fn → arg → options**，传反会静默失效）或 locator 原生自动等待（`waitFor()` / `waitForSelector` / `menu` 的 `state:'detached'`）。元素已满足时立即返回，慢机器不假失败；全套 ui-smoke 从 2min 降至 ~8s。
+- **视觉验收用 DOM computed-style 断言**：模型/CI 无图场景下，视觉契约用 `getComputedStyle` 断言（背景色/边框宽/尺寸/圆角/对齐 top 值），如侧边栏底色、顶栏与视图栏等高（`offsetHeight` + `getBoundingClientRect().top` 对比）、Dialog 尺寸。不要先截图再发现看不了。
+- **契约变更联动测试**：删除/修改机制（如 DirtyGuard、手动保存、入口按钮）时，实施同一阶段必须 grep 测试脚本中的相关断言并同步（`grep -n "按钮名|机制名" scripts/`）——本项目两轮都踩过：机制删了 ui-smoke/smoke-stores 断言超时。
+- **临时探针脚本放项目目录**：node ESM 模块解析以脚本所在目录为基准，`/tmp` 下找不到 playwright-core；探针脚本放 `scripts/`（如 `scripts/tmp-probe.mjs`），用完即删。
 
 ---
 
@@ -125,3 +129,5 @@ SourceNote 绿地图开发（1 次规划 + 5 轮子代理 + 5 轮用户反馈修
 2. **主会话阶段验收**：每轮实现子代理返回后，主会话必须抽查关键组件的行为代码（不只跑测试）——本项目未抽查 NoteForm，流程偏差跨 3 轮才暴露。
 3. **渲染层验证进门禁**：涉及组件/布局/编辑器改动的任务必须跑 `npm run ui-smoke`（详见 Render-Layer Pitfalls 节）。白屏三连（TooltipProvider 缺失 / useShallow 引用不稳定 / 短路条件 Hook）全部由真实 DOM 验证才捕获。
 4. **uTools 内核 CSS 兼容**：现代 CSS（Tailwind 4 输出 oklch/lab/color-mix）在老内核上整段失效 → 线框。必须配置 Lightning CSS 降级（vite `css.transformer: 'lightningcss'` + `targets: { chrome: 88 }` + `build.cssMinify: false`）。详见 utools-dev skill「uTools 内核 CSS 兼容」节。
+5. **需求选项空间给全**：brainstorm 给方案时，除推荐方案外必须列出「移除/按需/不显示」类选项——08-12 元数据展示只给了 A/B 两个常驻方案，用户第二轮推翻（"还是很丑"）改按需 ℹ 按钮，整个方案 B 作废。用户直觉常落在"少即是多"一侧。
+6. **大段 JSX 替换先 read 当前文件**：edit 的 oldText 必须与磁盘逐字节一致；import 段被前置修改后，按旧内容拼整段替换会失败。>30 行的替换一律先 `read` 确认现状再分段 edit（本次 ContentHeader 整段替换失败一次）。

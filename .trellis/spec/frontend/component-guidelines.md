@@ -44,6 +44,7 @@
 - 暗色由 `html.dark` 类驱动（`src/main.tsx:10-16` applyTheme），组件侧零感知
 - **区域划分用色阶、禁止结构性分割线（08-12 起）**：侧边栏 `bg-sidebar`（浅灰）vs 内容区 `bg-background`（纯白），区域间不用 `border-r/border-b`；元数据/信息块用 `bg-muted/50 rounded-md`（如 `ContentHeader.tsx` 来源元数据块）；表单底部操作栏 `bg-muted/50` 替代 `border-t`
   - **保留边框的例外**：内容卡片（笔记卡片 `NoteCardList.tsx:89`、设置页卡片）与内容语义线（Markdown 的 hr/表格）
+  - **色阶 token 选值需实测对比（08-12 教训）**：`--sidebar: #fafafa` 与纯白仅差 2%（肉眼不可辨）被用户否决；后加深至 `#f0f0f0`。选 token 时用 `getComputedStyle` 对比相邻区域背景（差值 <5% 视为不可辨），不要凭视觉近似拍脑袋
 - 紧凑密度统一：行 `h-7`、icon 按钮 `size="icon-sm"`、角标 `h-4.5 px-1 text-[0.7rem]`（`NoteCardList.tsx:153-175`）
 - **无横向滚动**三件套：滚动容器 `min-w-0`、长文本 `truncate`（配合 `title` 属性显示全文，`NoteCardList.tsx:93`）、flex 子项 `shrink-0` 控制收缩
 - 装饰器样式类（`.sn-md-dim` / `.sn-md-hidden` 等）只定义在 `src/components/Editor/markdownDecorations.ts:30` 的 `markdownEditorTheme`，全部语义色 CSS 变量，不硬编码色值
