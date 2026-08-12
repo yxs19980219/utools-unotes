@@ -418,7 +418,7 @@ export default function SidebarList() {
   const browseView = useUiStore((s) => (s.view === 'settings' ? s.lastBrowseView : s.view))
 
   return (
-    <ScrollArea className="min-h-0 flex-1">
+    <ScrollArea className="sidebar-fill min-h-0 flex-1">
       <div className="flex min-h-full flex-col p-2">
         {browseView === 'home' && <HomeSidebarGroups />}
         {browseView === 'tags' && <TagsSidebarList />}

@@ -243,3 +243,13 @@
     letter-spacing: var(--tracking-normal);
   }
 }
+
+/* SidebarList：radix ScrollArea 内容 wrapper（内联 display:table）转回 block 并占满视口，
+   使活跃对象/钉住标签两区 flex-1 对半分生效；内容多时溢出 wrapper 随视口滚动。
+   注意：必须用 height:100%（非 min-height）——百分比 min-height 参照 containing block 的
+   height used value，height:auto 时无法解析（CSS 坑） */
+.sidebar-fill > [data-slot='scroll-area-viewport'] > div {
+  display: block !important;
+  min-width: 100%;
+  height: 100%;
+}

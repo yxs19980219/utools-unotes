@@ -3,7 +3,7 @@
  *
  * [首页|标签|归档] 三视图均分侧边栏宽度（设置入口已移至底部齿轮 SidebarSettingsButton）。
  * - 侧边栏变浅（bg-sidebar #f7f7f8）后 TabsList 透明底，视图间浅灰竖线（Separator）分隔；
- *   悬停 hover:bg-accent、选中白底+微阴影+加粗（对比明显）；dark 下悬停保持原 accent/60
+ *   悬停 hover:bg-accent、选中 bg-border（比悬停深）+ 加粗；dark 下悬停保持原 accent/60
  * - 路由切换直接调用（实时保存时代无确认）
  */
 import { Fragment } from 'react'
@@ -27,11 +27,11 @@ export default function ViewSwitcher() {
         {VIEWS.map((v, i) => (
           <Fragment key={v.value}>
             {i > 0 && (
-              <Separator orientation="vertical" className="h-4 shrink-0 bg-sidebar-border" />
+              <Separator orientation="vertical" className="h-4 w-px shrink-0 bg-foreground/20" />
             )}
             <TabsTrigger
               value={v.value}
-              className="h-8 rounded-md px-1 text-[0.9rem] transition-colors hover:bg-accent data-active:font-semibold dark:hover:bg-accent/60"
+              className="h-8 rounded-md px-1 text-[0.9rem] transition-colors hover:bg-accent data-[state=active]:bg-border! data-[state=active]:font-semibold data-[state=active]:shadow-none dark:hover:bg-accent/60"
             >
               {v.label}
             </TabsTrigger>
