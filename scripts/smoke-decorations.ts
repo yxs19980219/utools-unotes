@@ -6,8 +6,13 @@
  */
 import assert from 'node:assert/strict'
 import { EditorState } from '@codemirror/state'
+import { markdown } from '@codemirror/lang-markdown'
+import { GFM } from '@lezer/markdown'
 import type { Decoration, DecorationSet } from '@codemirror/view'
 import { buildDecorations } from '../src/components/Editor/markdownDecorations.ts'
+
+/** 语法树驱动装饰依赖 language 扩展：state 需挂 markdown+GFM（与编辑器运行时一致） */
+const LANG_EXT = [markdown({ extensions: [GFM] })]
 
 let passed = 0
 function ok(name: string) {
@@ -51,7 +56,7 @@ function main() {
   ].join('\n')
 
   // 光标放在第 1 行（# 注意力机制）
-  const state = EditorState.create({ doc, selection: { anchor: 1 } })
+  const state = EditorState.create({ doc, selection: { anchor: 1 }, extensions: LANG_EXT })
   const set = buildDecorations(state)
   const items = collect(set)
 
@@ -60,16 +65,17 @@ function main() {
   // 1. 标题：光标行标记淡色，非光标行隐藏；内容行有对应级别样式
   {
     const l1 = lineAt(1)
-    const l1Marker = items.filter((i) => i.from === 0 && i.to === 2)
-    assert.equal(l1Marker.length, 1, 'h1 标记范围 [0,2)')
+    // 语法树版：HeaderMark 仅覆盖 # 本身（不含后续空白）
+    const l1Marker = items.filter((i) => i.from === 0 && i.to === 1)
+    assert.equal(l1Marker.length, 1, 'h1 标记范围 [0,1)')
     assert.equal(l1Marker[0].cls, 'sn-md-dim', '光标行标题标记 → 淡色')
-    const l1Content = items.filter((i) => i.from === 2 && i.to === l1.to)
+    const l1Content = items.filter((i) => i.from === 1 && i.to === l1.to)
     assert.equal(l1Content[0].cls, 'sn-md-h1', 'h1 内容行样式')
 
     const l2 = lineAt(2)
-    const l2Marker = items.filter((i) => i.from === l2.from && i.to === l2.from + 3)
+    const l2Marker = items.filter((i) => i.from === l2.from && i.to === l2.from + 2)
     assert.equal(l2Marker[0].cls, 'sn-md-hidden', '非光标行标题标记 → 隐藏')
-    const l2Content = items.filter((i) => i.from === l2.from + 3 && i.to === l2.to)
+    const l2Content = items.filter((i) => i.from === l2.from + 2 && i.to === l2.to)
     assert.equal(l2Content[0].cls, 'sn-md-h2', 'h2 内容行样式')
     ok('标题：光标行淡色标记 / 非光标行隐藏 + 级别样式')
   }
@@ -150,11 +156,11 @@ function main() {
 
   // 7. 光标移到非标题行：所有标题标记隐藏（光标行机制重算）
   {
-    const state2 = EditorState.create({ doc, selection: { anchor: lineAt(4).from + 2 } })
+    const state2 = EditorState.create({ doc, selection: { anchor: lineAt(4).from + 2 }, extensions: LANG_EXT })
     const set2 = buildDecorations(state2)
     const items2 = collect(set2)
     assert.equal(
-      items2.find((i) => i.from === 0 && i.to === 2)?.cls,
+      items2.find((i) => i.from === 0 && i.to === 1)?.cls,
       'sn-md-hidden',
       '光标离开标题行 → h1 标记隐藏',
     )
@@ -169,7 +175,7 @@ function main() {
       '| 值1 | 值2 |',
       '| 值3 | **值4** |',
     ].join('\n')
-    const state3 = EditorState.create({ doc: tableDoc, selection: { anchor: 0 } })
+    const state3 = EditorState.create({ doc: tableDoc, selection: { anchor: 0 }, extensions: LANG_EXT })
     const set3 = buildDecorations(state3)
     const items3 = collect(set3)
     const t = (n: number) => state3.doc.line(n)

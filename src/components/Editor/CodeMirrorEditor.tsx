@@ -14,12 +14,13 @@
  * - forwardRef 暴露 MarkdownInsertApi：快捷工具栏（MarkdownToolbar）调用
  *   wrap/block 在光标处插入 markdown 语法，源文本始终为标准 markdown
  */
-import { forwardRef, useImperativeHandle, useMemo, useRef } from 'react'
+import { forwardRef, memo, useImperativeHandle, useMemo, useRef } from 'react'
 import type { EditorView } from '@codemirror/view'
 import CodeMirror from '@uiw/react-codemirror'
 import { indentWithTab } from '@codemirror/commands'
 import type { BasicSetupOptions } from '@uiw/codemirror-extensions-basic-setup'
 import { markdown } from '@codemirror/lang-markdown'
+import { GFM } from '@lezer/markdown'
 import { keymap } from '@codemirror/view'
 
 import { cn } from '@/lib/utils'
@@ -59,8 +60,9 @@ const BASIC_SETUP: BasicSetupOptions = {
   syntaxHighlighting: false,
 }
 
-const CodeMirrorEditor = forwardRef<MarkdownInsertApi, CodeMirrorEditorProps>(
-  function CodeMirrorEditor(
+const CodeMirrorEditor = memo(
+  forwardRef<MarkdownInsertApi, CodeMirrorEditorProps>(
+    function CodeMirrorEditor(
     { value, onChange, onSave, placeholder, autoFocus = false, className },
     ref,
   ) {
@@ -143,7 +145,8 @@ const CodeMirrorEditor = forwardRef<MarkdownInsertApi, CodeMirrorEditorProps>(
 
     const extensions = useMemo(
       () => [
-        markdown(),
+        // GFM 扩展：语法树解析表格/任务列表/删除线等（装饰由 markdownDecorations 从语法树派生）
+        markdown({ extensions: [GFM] }),
         markdownDecorationExtension,
         keymap.of([
           // Tab 缩进 / Shift+Tab 反缩进（嵌套列表必备，basicSetup 默认不含）
@@ -177,6 +180,7 @@ const CodeMirrorEditor = forwardRef<MarkdownInsertApi, CodeMirrorEditorProps>(
       />
     )
   },
+  ),
 )
 
 export default CodeMirrorEditor

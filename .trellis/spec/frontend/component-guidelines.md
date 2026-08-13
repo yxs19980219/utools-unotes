@@ -61,6 +61,29 @@
 
 ---
 
+## Editor / CodeMirror 装饰（08-13-perf-smoothness 起）
+
+**装饰必须语法树驱动，禁止正则全量重扫**：
+
+- 装饰从 lezer 语法树派生（`syntaxTree(state)` 单遍遍历 + RangeSetBuilder），解析器增量更新（只重解析变化区），5000 行 0.14ms vs 正则版 2.45ms（17.8 倍）
+- 结构基础：嵌套层级（ListItem 祖先链）、表格/任务/围栏等块结构天然可得，后续 WYSIWYG Widget（图片/表格/代码块）都依赖语法树
+- 启用 GFM：`markdown({ extensions: [GFM] })`（CodeMirrorEditor.tsx），否则语法树无 Table/TaskList 节点
+
+**节点映射要点**（实测 dump 确认）：
+
+- `ATXHeading1..6` → `HeaderMark`（标记范围**不含**后续空格，与正则版 `# ` 不同）；5/6 级复用 h5/h6 样式
+- `Emphasis/StrongEmphasis` → 首尾 `EmphasisMark` dim + 中间隐式文本区间（**隐式文本无节点**，按位置区间处理）
+- `Link/Image` → 首 `LinkMark` dim、文本区 linkMark、剩余 dim（LinkMark 序列含 URL 子节点）
+- `ListItem` → `ListMark`（无序替换 BulletWidget 含后续空白 / 有序 dim）；`Task(TaskMarker)` 复选框 Widget
+- `Table` → 表头行 head+first、分隔行 sep、数据行 row+last、行内 `TableDelimiter` dim；**不递归 Table 内部**（单元格内不 scanInline）
+- `FencedCode` → 开 `CodeMark`+`CodeInfo` fenceMark、`CodeText` codeBlockMark、闭 `CodeMark` fenceMark
+
+**装饰约定**：`buildDecorations(state)` 导出签名保留（headless 测试/基准共用）；ViewPlugin 全量重建（0.14ms 可忽略），DOM 增量由 CM6 RangeSet.compare 处理（实测每键 DOM 变更 3 处）。
+
+**性能基准**：`node scripts/bench-decorations.ts`（5000 行阈值 <10ms）与 `DOC_LINES=5000 node scripts/perf-input.mjs`（真实浏览器端到端/长任务检测）是后续 child 回归对比的固定工具。
+
+---
+
 ## Common Mistakes
 
 - **radix Popover 用 onFocus 打开会被同点击序列误关（08-12 实测）**：点击输入框时 focus 触发 `setOpen(true)`，但 DismissableLayer 把同一点击序列的后续事件判为外部点击 → Popover 立即关闭。现象：标签联想永不显示（TagInput）。修复：`onChange` 时兜底 `setOpen(true)`（输入字符即重开）；不要依赖 onFocus 单独打开
@@ -68,5 +91,7 @@
 - **组件直接碰 db**（红线）：数据必须经 store → services/db.ts。曾出现过在组件里 import services 的倾向，已被分层规则拦下；唯一例外是 `lib/sourceTypes.ts` 的只读缓存 hook
 - **每卡自建投影 Map**：`NoteCardList.tsx:67` 的 `tagById` 在列表级构建一次传给卡片，禁止每张卡内 `tags.find()`（O(N²)）
 - **复制列表形态**：AC3 要求 1 条与 20 条渲染一致，新增列表场景必须先问"能否复用 NoteCardList"，禁止另写一套卡片
+- **装饰增量重建（08-13 实测回退）**：不要手工做「变化行局部重建 + 旧装饰 map 复用」——RangeSetBuilder 对重叠 range 分层存储（nextLayer），`between` 复制时主层与 nextLayer 分开回调导致 from 逆序，抛 `Ranges must be added sorted by from and startSide`；且实测 CM6 compare 本就只 diff 变化部分，增量无端到端收益。全量重建（语法树 0.14ms/5000 行）就是最优解
+- **headless 测装饰不挂 language 扩展**：`syntaxTree(state)` 依赖 state 里的 language 扩展，`EditorState.create` 裸建（无 `markdown({extensions:[GFM]})`）时语法树为空 → 装饰空。smoke/bench 的 state 必须带 LANG_EXT
 - **裸色值/硬编码圆角字号**：一律走语义 Token 与 tailwind 标准 spacing/radius；装饰器样式只进 `markdownEditorTheme`
 - **弹窗承载表单**：800×600 下弹窗空间不足，新建对象/笔记表单是**全内容区替换**（`ContentArea.tsx:129-131` 编辑态优先），Dialog 只用于确认与短表单（标签别名编辑）

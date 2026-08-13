@@ -1,22 +1,33 @@
 /**
- * components/Editor/markdownDecorations.ts —— CodeMirror 6 即时渲染装饰（阶段 5a，路径 A）
+ * components/Editor/markdownDecorations.ts —— CodeMirror 6 即时渲染装饰（阶段 5a 重构，任务 08-13-perf-smoothness）
  *
- * 契约（design.md 第 5 节 / implement.md 阶段 5）：
+ * 契约（design.md 第 3~5 节）：
  * - decorations 只改显示不改内容：源码始终是纯 markdown，对输入/撤销/拼写零副作用
  *   （仅 ViewPlugin + decorations，不拦截事务）
- * - 全部样式走语义色 CSS 变量（--foreground/--muted-foreground/--border/--muted/--accent
- *   /--primary），禁硬编码色值；暗色模式随 html.dark Token（附录 A）自动切换
- * - 语法覆盖（MVP）：标题 #~####、粗体/斜体/行内代码、链接、列表（含任务复选框）、
- *   引用、分隔线、代码块围栏、GFM 表格（R10：表头加粗/边框/分隔符淡色，
- *   单元格内不 scanInline——MVP 折中，保持文本流可编辑）
- * - 光标行机制（Obsidian Live Preview 同思路）：光标行显示淡色标题标记，非光标行
- *   标记隐藏（opacity 0，占位保留）但标题样式保留；仅光标行变化或文档变化时重算
- * - 性能策略：ViewPlugin 内基于 doc 全量正则 + RangeSetBuilder 重建，千行内无感；
- *   光标移动只在光标行变化时触发重算（selectionSet 但同行的移动跳过）
+ * - 全部样式走语义色 CSS 变量；暗色模式随 html.dark Token 自动切换
+ * - 语法覆盖：标题 #~######、粗体/斜体/行内代码、链接、列表（含任务复选框/嵌套）、
+ *   引用、分隔线、代码块围栏、GFM 表格（表头加粗/边框/分隔符淡色，单元格内不 scanInline）
+ * - 光标行机制：光标行显示淡色标题标记，非光标行标记隐藏（占位保留）但标题样式保留
+ *
+ * 性能策略（08-13-perf-smoothness design.md §5，v3 最终版）：
+ * - 装饰从 lezer 语法树派生（@codemirror/lang-markdown + GFM 扩展，解析器增量更新）
+ * - 每次 docChanged / 光标跨行：全量遍历语法树重建（5000 行 0.14ms，正则版 2.45ms 的 17 倍提升）；
+ *   未变区域的 DOM 更新由 CM6 RangeSet.compare 增量处理（实测每键 DOM 变更 3 处）
+ * - 曾尝试变化行局部重建（v2），因 RangeSetBuilder 分层（nextLayer）与 between 复制
+ *   的回调顺序冲突导致 from 逆序违规，且实测无端到端收益，已回退（design.md §5 记录）
+ * - 首次构建/headless 测试：buildDecorations(state) 全量遍历语法树
  */
 import { RangeSetBuilder, type EditorState, type Extension } from '@codemirror/state'
-import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view'
-import { TABLE_ROW_RE, TABLE_SEP_RE } from '../../lib/markdown.ts'
+import {
+  Decoration,
+  EditorView,
+  ViewPlugin,
+  WidgetType,
+  type DecorationSet,
+  type ViewUpdate,
+} from '@codemirror/view'
+import { syntaxTree } from '@codemirror/language'
+import type { SyntaxNode } from '@lezer/common'
 
 /* ------------------------------------------------------------------ */
 /* 编辑器主题（chrome + 装饰类样式）：全部语义色                          */
@@ -58,6 +69,8 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   '.sn-md-h2': { fontSize: '1.35rem', fontWeight: '650', lineHeight: '1.3' },
   '.sn-md-h3': { fontSize: '1.15rem', fontWeight: '600', lineHeight: '1.35' },
   '.sn-md-h4': { fontSize: '1rem', fontWeight: '600', color: 'var(--muted-foreground)', lineHeight: '1.4' },
+  '.sn-md-h5': { fontSize: '0.95rem', fontWeight: '600', color: 'var(--muted-foreground)', lineHeight: '1.4' },
+  '.sn-md-h6': { fontSize: '0.9rem', fontWeight: '600', color: 'var(--muted-foreground)', lineHeight: '1.4' },
   '.sn-md-bold': { fontWeight: '600' },
   '.sn-md-italic': { fontStyle: 'italic' },
   '.sn-md-code': {
@@ -68,7 +81,7 @@ export const markdownEditorTheme: Extension = EditorView.theme({
     padding: '0 2px',
   },
   '.sn-md-link': {
-    // R13（用户拍板）：链接 = 前景色 + 下划线（浅色模式可见；一期 --primary 浅灰不可见）
+    // R13（用户拍板）：链接 = 前景色 + 下划线（浅色模式一期 --primary 浅灰不可见）
     color: 'var(--foreground)',
     textDecoration: 'underline',
     textUnderlineOffset: '2px',
@@ -139,7 +152,7 @@ export const markdownEditorTheme: Extension = EditorView.theme({
 const dimMark = Decoration.mark({ class: 'sn-md-dim' })
 /** 隐藏标记（光标行机制：非光标行标题的 # 隐藏但保留占位） */
 const hiddenMark = Decoration.mark({ class: 'sn-md-hidden' })
-const headingMarks = [1, 2, 3, 4].map((level) =>
+const headingMarks = [1, 2, 3, 4, 5, 6].map((level) =>
   Decoration.mark({ class: `sn-md-h${level}` }),
 )
 const boldMark = Decoration.mark({ class: 'sn-md-bold' })
@@ -177,7 +190,8 @@ class TaskBoxWidget extends WidgetType {
 }
 
 /** 无序列表标记：源文本 `- ` 替换显示为项目符号 `•`（Obsidian 同款，源 markdown 不变） */
-class BulletWidget extends WidgetType {  eq(): boolean {
+class BulletWidget extends WidgetType {
+  eq(): boolean {
     return true
   }
 
@@ -195,252 +209,275 @@ class BulletWidget extends WidgetType {  eq(): boolean {
 }
 
 /* ------------------------------------------------------------------ */
-/* 语法正则                                                             */
+/* 语法树 → 装饰（节点映射，design.md §4）                               */
 /* ------------------------------------------------------------------ */
 
-/** 代码块围栏（行首 ```，支持语言标记） */
-const FENCE_RE = /^\s*```/
-/** 标题：#~#### 后跟空白 */
-const HEADING_RE = /^(#{1,4})(\s+)/
-/** 分隔线：--- 或 *** */
-const HR_RE = /^\s*(?:---|\*\*\*)\s*$/
-/** 引用：> 或 > 后接一空格 */
-const QUOTE_RE = /^>\s?/
-/** 列表标记（ul: 短横线/星号/加号，ol: 1. / 1)）：捕获「缩进 + 标记 + 空白」 */
-const LIST_MARKER_RE = /^(\s*)([-*+]|\d+[.)])(\s+)/
-/** 无序标记（-、*、+）——替换显示为 •（仅替换标记+空白，保留缩进） */
-const UL_MARKER_RE = /^\s*[-*+]\s+/
-/** 任务列表：列表标记 + [ ]/[x] */
-const TASK_RE = /^(\s*(?:[-*+]|\d+[.)])\s+)\[([ xX])\]/
-/** 行内代码片断（不含换行）；用于先从行文本中切出，避免其余行内正则误命中 */
-const CODE_SPAN_RE = /`[^`\n]+`/g
-/**
- * 行内语法（粗体/斜体/链接）：按「先粗后斜」顺序匹配同一位置的最长形态。
- * 行内代码由 CODE_SPAN_RE 先行切出，故此处不包含反引号形态。
- */
-const INLINE_RE =
-  /(\*\*[^*]+\*\*|__[^_]+__)|(\*[^*]+\*|_[^_]+_)|(\[[^\]\n]+\]\([^)\n]+\))/g
+/** 标题节点：ATXHeading1~6 */
+function isHeading(name: string): boolean {
+  return name.startsWith('ATXHeading')
+}
+function headingLevel(node: SyntaxNode): number {
+  return Number(node.name.slice('ATXHeading'.length))
+}
 
-/**
- * 标记一行表格（R10）：整行边框/背景 + 表头加粗；行内 `|` 分隔符淡色。
- * 单元格内不 scanInline（MVP 折中：保持文本流可编辑，不做单元格内语法）。
- */
-function markTableRow(
+/** 区间内遍历语法树并生成装饰（深度优先先序 = 位置递增，满足 builder 顺序） */
+function addRangeDecorations(
   builder: RangeSetBuilder<Decoration>,
-  line: { text: string; from: number; to: number },
-  kind: 'head' | 'sep' | 'row',
-  isFirst: boolean,
-  isLast: boolean,
+  state: EditorState,
+  from: number,
+  to: number,
+  cursorLine: number,
 ): void {
-  const classes = ['sn-md-tbl']
-  if (kind === 'head') {
-    classes.push('sn-md-tbl-head')
-    if (isFirst) classes.push('sn-md-tbl-first')
-  } else if (kind === 'sep') {
-    classes.push('sn-md-tbl-sep')
+  const tree = syntaxTree(state)
+  tree.iterate({
+    from,
+    to,
+    enter: (ref) => {
+      const node = ref.node
+      const { name } = node
+      // Table 内部不递归（维持「单元格内不 scanInline」MVP 折中，② 再放开）
+      if (name === 'Table') {
+        addTable(builder, state, node)
+        return false
+      }
+      if (isHeading(name)) {
+        addHeading(builder, state, node, cursorLine)
+        return true
+      }
+      switch (name) {
+        case 'FencedCode':
+          addFencedCode(builder, node)
+          return false
+        case 'Emphasis':
+          addEmphasisLike(builder, node, italicMark)
+          return true
+        case 'StrongEmphasis':
+          addEmphasisLike(builder, node, boldMark)
+          return true
+        case 'InlineCode':
+          addInlineCode(builder, node)
+          return false
+        case 'Link':
+        case 'Image':
+          addLink(builder, node)
+          return true
+        case 'ListItem':
+          addListItem(builder, node)
+          return true
+        case 'TaskMarker': {
+          // 任务标记 [x]/[ ] → 复选框 Widget（读文本判断勾选）
+          const taskText = state.sliceDoc(node.from, node.to)
+          const checked = taskText.length >= 3 && taskText[1].toLowerCase() === 'x'
+          builder.add(node.from, node.to, Decoration.replace({ widget: new TaskBoxWidget(checked) }))
+          return false
+        }
+        case 'Blockquote':
+          addBlockquote(builder, state, node)
+          return true
+        case 'HorizontalRule':
+          builder.add(node.from, node.to, hrMark)
+          return false
+      }
+      return true
+    },
+  })
+}
+
+/** 标题：行首标记 dim（光标行）/ hidden（非光标行），内容整行标题样式 */
+function addHeading(
+  builder: RangeSetBuilder<Decoration>,
+  state: EditorState,
+  node: SyntaxNode,
+  cursorLine: number,
+): void {
+  const level = headingLevel(node)
+  const mark = node.getChild('HeaderMark')
+  if (mark) {
+    const isCursorLine = state.doc.lineAt(mark.from).number === cursorLine
+    builder.add(mark.from, mark.to, isCursorLine ? dimMark : hiddenMark)
   }
-  if (isLast) classes.push('sn-md-tbl-last')
-  builder.add(line.from, line.to, Decoration.mark({ class: classes.join(' ') }))
-  // 单元格分隔符 `|` 淡色（分隔行整行已淡色，跳过）
-  if (kind !== 'sep') {
-    let idx = line.text.indexOf('|')
-    while (idx !== -1) {
-      builder.add(line.from + idx, line.from + idx + 1, dimMark)
-      idx = line.text.indexOf('|', idx + 1)
+  // 标题内容行样式（# 标记之后到行尾；嵌套（如内容含 StrongEmphasis）由子节点递归补充）
+  const lineEnd = state.doc.lineAt(node.to).to
+  const contentFrom = mark ? mark.to : node.from
+  builder.add(contentFrom, lineEnd, headingMarks[Math.min(level - 1, 5)])
+  // 注意：内容区装饰与子节点（StrongEmphasis 等）重叠合法；子节点 by iterate enter
+}
+
+/** 强调：首尾 EmphasisMark dim，中间区间样式（隐式文本按位置处理，嵌套重叠合法） */
+function addEmphasisLike(
+  builder: RangeSetBuilder<Decoration>,
+  node: SyntaxNode,
+  style: Decoration,
+): void {
+  const marks = collectChildren(node, 'EmphasisMark')
+  if (marks.length === 0) return
+  const first = marks[0]
+  const last = marks[marks.length - 1]
+  builder.add(first.from, first.to, dimMark)
+  if (last.to > first.to) builder.add(first.to, last.from, style)
+  builder.add(last.from, last.to, dimMark)
+}
+
+/** 行内代码：首尾 CodeMark dim，中间 codeMark */
+function addInlineCode(builder: RangeSetBuilder<Decoration>, node: SyntaxNode): void {
+  const marks = collectChildren(node, 'CodeMark')
+  if (marks.length === 0) return
+  const first = marks[0]
+  const last = marks[marks.length - 1]
+  builder.add(first.from, first.to, dimMark)
+  if (last.from > first.to) builder.add(first.to, last.from, codeMark)
+  builder.add(last.from, last.to, dimMark)
+}
+
+/** 链接/图片：首 LinkMark dim、文本区 linkMark、剩余（](url)）dim */
+function addLink(builder: RangeSetBuilder<Decoration>, node: SyntaxNode): void {
+  const marks = collectChildren(node, 'LinkMark')
+  if (marks.length === 0) return
+  const first = marks[0]
+  const second = marks[1]
+  builder.add(first.from, first.to, dimMark)
+  if (second) {
+    if (second.from > first.to) builder.add(first.to, second.from, linkMark)
+    builder.add(second.from, node.to, dimMark)
+  } else {
+    builder.add(first.to, node.to, dimMark)
+  }
+}
+
+/** 列表项：ListMark 替换/淡色，递归子项（嵌套层级由 ListItem 祖先链得出，④ 消费） */
+function addListItem(
+  builder: RangeSetBuilder<Decoration>,
+  node: SyntaxNode,
+): void {
+  const mark = node.getChild('ListMark')
+  if (!mark) return
+  const contentStart = nextChildStart(node, mark)
+  const isTask = !!node.getChild('Task')
+  if (isTask) {
+    // 任务列表：标记淡色（复选框由 TaskMarker 处理）
+    builder.add(mark.from, mark.to, dimMark)
+  } else {
+    // 普通列表：无序标记替换为 • Widget（含后续空白），有序标记淡色保留
+    const parent = node.parent
+    const isOrdered = !!parent && parent.name === 'OrderedList'
+    if (isOrdered) {
+      builder.add(mark.from, mark.to, dimMark)
+    } else {
+      builder.add(mark.from, contentStart, Decoration.replace({ widget: new BulletWidget() }))
+    }
+  }
+  // 嵌套子列表（BulletList 等）由 iterate enter 递归处理；列表标记无光标行显隐机制
+}
+
+/** 引用：QuoteMark dim + 覆盖行 quoteMark */
+function addBlockquote(
+  builder: RangeSetBuilder<Decoration>,
+  state: EditorState,
+  node: SyntaxNode,
+): void {
+  const mark = node.getChild('QuoteMark')
+  if (mark) builder.add(mark.from, mark.to, dimMark)
+  // 覆盖的每一行：整行左侧边框 + 内缩（多行引用每行生效）
+  let lineNo = state.doc.lineAt(node.from).number
+  const lastLine = state.doc.lineAt(node.to).number
+  while (lineNo <= lastLine) {
+    const line = state.doc.line(lineNo)
+    builder.add(line.from, line.to, quoteMark)
+    lineNo += 1
+  }
+}
+
+/** 围栏代码块：开/闭 CodeMark（+CodeInfo）fenceMark，CodeText 内容 codeBlockMark */
+function addFencedCode(builder: RangeSetBuilder<Decoration>, node: SyntaxNode): void {
+  const marks = collectChildren(node, 'CodeMark')
+  if (marks.length === 0) return
+  const open = marks[0]
+  const close = marks[marks.length - 1]
+  const info = node.getChild('CodeInfo')
+  builder.add(open.from, info ? info.to : open.to, fenceMark)
+  if (close.from > open.to) builder.add(open.to, close.from, codeBlockMark)
+  builder.add(close.from, close.to, fenceMark)
+}
+
+/** GFM 表格：表头行 head+first、分隔行 sep、数据行 row+last、分隔符 dim；不递归单元格 */
+function addTable(
+  builder: RangeSetBuilder<Decoration>,
+  state: EditorState,
+  node: SyntaxNode,
+): void {
+  const children: SyntaxNode[] = []
+  for (let ch = node.firstChild; ch; ch = ch.nextSibling) children.push(ch)
+  const rows = children.filter((c) => c.name === 'TableRow')
+  const isLastRow = (n: SyntaxNode) => rows.length > 0 && rows[rows.length - 1] === n
+
+  for (const ch of children) {
+    if (ch.name === 'TableHeader') {
+      const line = state.doc.lineAt(ch.from)
+      const cls = ['sn-md-tbl', 'sn-md-tbl-head', 'sn-md-tbl-first'].join(' ')
+      builder.add(line.from, line.to, Decoration.mark({ class: cls }))
+      addTableDelims(builder, ch)
+    } else if (ch.name === 'TableDelimiter') {
+      // 分隔行（无子节点时 table 退化，这里按行处理）
+      const line = state.doc.lineAt(ch.from)
+      const cls = ['sn-md-tbl', 'sn-md-tbl-sep'].join(' ')
+      if (rows.length === 0) builder.add(line.from, line.to, Decoration.mark({ class: cls + ' sn-md-tbl-last' }))
+      else builder.add(line.from, line.to, Decoration.mark({ class: cls }))
+    } else if (ch.name === 'TableRow') {
+      const line = state.doc.lineAt(ch.from)
+      const cls = ['sn-md-tbl', ...(isLastRow(ch) ? ['sn-md-tbl-last'] : [])].join(' ')
+      builder.add(line.from, line.to, Decoration.mark({ class: cls }))
+      addTableDelims(builder, ch)
     }
   }
 }
 
-/**
- * 块级解析辅助：当前行（n）是表格分隔行且上一行是表头行 → 收集整表并标记，
- * 返回表结束后的下一行号（已处理的行跳过）；非表格返回 n。
- */
-function scanTable(
-  builder: RangeSetBuilder<Decoration>,
-  doc: { lines: number; line(n: number): { text: string; from: number; to: number } },
-  n: number,
-): number {
-  const sepLine = doc.line(n)
-  if (n === 1 || !TABLE_SEP_RE.test(sepLine.text)) return n
-  const headLine = doc.line(n - 1)
-  if (!TABLE_ROW_RE.test(headLine.text)) return n
-  // 收集后续数据行
-  let last = n + 1
-  while (last <= doc.lines && TABLE_ROW_RE.test(doc.line(last).text)) last++
-  // 表头（表格第一行 = 上一行）
-  markTableRow(builder, headLine, 'head', true, false)
-  // 分隔行（无数据行时分隔行闭合下边框）
-  markTableRow(builder, sepLine, 'sep', false, last === n + 1)
-  // 数据行（最后一行闭合下边框）
-  for (let r = n + 1; r < last; r++) {
-    markTableRow(builder, doc.line(r), 'row', false, r === last - 1)
+/** 表格行内分隔符 | 淡色 */
+function addTableDelims(builder: RangeSetBuilder<Decoration>, row: SyntaxNode): void {
+  for (let ch = row.firstChild; ch; ch = ch.nextSibling) {
+    if (ch.name === 'TableDelimiter') builder.add(ch.from, ch.to, dimMark)
   }
-  return last
 }
 
 /* ------------------------------------------------------------------ */
-/* 扫描器                                                               */
+/* 辅助                                                                */
+/* ------------------------------------------------------------------ */
+
+/** 收集指定类型的直接子节点（保持位置顺序） */
+function collectChildren(node: SyntaxNode, name: string): SyntaxNode[] {
+  const out: SyntaxNode[] = []
+  for (let ch = node.firstChild; ch; ch = ch.nextSibling) {
+    if (ch.name === name) out.push(ch)
+  }
+  return out
+}
+
+/** 节点内指定子节点之后的下一个兄弟起点（无则取节点末尾） */
+function nextChildStart(node: SyntaxNode, after: SyntaxNode): number {
+  const next = after.nextSibling
+  return next ? next.from : node.to
+}
+
+/* ------------------------------------------------------------------ */
+/* 全量构建（首次 / ViewPlugin 更新 / headless 测试）                     */
 /* ------------------------------------------------------------------ */
 
 /**
- * 行内扫描（粗体/斜体/行内代码/链接）。
- * 先按 CODE_SPAN_RE 切出代码片断（整体装饰：反引号淡色、内容 code 样式），
- * 再对非代码段跑 INLINE_RE；两者位置单调递增，满足 RangeSetBuilder 顺序要求。
- */
-function scanInline(
-  builder: RangeSetBuilder<Decoration>,
-  base: number,
-  text: string,
-): void {
-  let pos = 0
-  CODE_SPAN_RE.lastIndex = 0
-  let m: RegExpExecArray | null
-  while ((m = CODE_SPAN_RE.exec(text)) !== null) {
-    if (m.index > pos) scanInlinePlain(builder, base + pos, text.slice(pos, m.index))
-    const spanFrom = base + m.index
-    const spanTo = spanFrom + m[0].length
-    builder.add(spanFrom, spanFrom + 1, dimMark) // 起始 `
-    builder.add(spanFrom + 1, spanTo - 1, codeMark) // 内容
-    builder.add(spanTo - 1, spanTo, dimMark) // 结束 `
-    pos = m.index + m[0].length
-  }
-  if (pos < text.length) scanInlinePlain(builder, base + pos, text.slice(pos))
-}
-
-/** 非代码段的行内语法（粗体/斜体/链接） */
-function scanInlinePlain(
-  builder: RangeSetBuilder<Decoration>,
-  base: number,
-  text: string,
-): void {
-  INLINE_RE.lastIndex = 0
-  let m: RegExpExecArray | null
-  while ((m = INLINE_RE.exec(text)) !== null) {
-    const segFrom = base + m.index
-    const segTo = segFrom + m[0].length
-    if (m[1]) {
-      // 粗体 **x** / __x__
-      builder.add(segFrom, segFrom + 2, dimMark)
-      builder.add(segFrom + 2, segTo - 2, boldMark)
-      builder.add(segTo - 2, segTo, dimMark)
-    } else if (m[2]) {
-      // 斜体 *x* / _x_
-      builder.add(segFrom, segFrom + 1, dimMark)
-      builder.add(segFrom + 1, segTo - 1, italicMark)
-      builder.add(segTo - 1, segTo, dimMark)
-    } else if (m[3]) {
-      // 链接 [text](url)
-      const textEnd = m[0].indexOf('](')
-      builder.add(segFrom, segFrom + 1, dimMark) // [
-      builder.add(segFrom + 1, segFrom + textEnd, linkMark) // text
-      builder.add(segFrom + textEnd, segTo, dimMark) // ](url)
-    }
-  }
-}
-
-/**
- * 全量构建装饰：逐行扫描，块级语法优先（围栏 > 标题 > 分隔线 > 引用 >
- * 任务列表 > 列表 > 行内），行内语法对所有块内容行生效（如标题/列表内的粗体）。
+ * 全量构建装饰：遍历整棵语法树（lezer 解析器增量更新，遍历单遍 O(n)）。
  * 入参为 EditorState（无 DOM 依赖，可 headless 测试）。
  */
 export function buildDecorations(state: EditorState): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>()
-  const { doc } = state
-  // 光标行（仅标题标记的「显示/隐藏」依赖它）
-  const cursorLine = doc.lineAt(state.selection.main.head).number
-  let inFence = false
-
-  for (let n = 1; n <= doc.lines; n++) {
-    const line = doc.line(n)
-    const { text, from } = line
-
-    // 围栏代码块：围栏行整体淡色，内部行等宽 + 背景
-    if (FENCE_RE.test(text)) {
-      builder.add(from, line.to, fenceMark)
-      inFence = !inFence
-      continue
-    }
-    if (inFence) {
-      builder.add(from, line.to, codeBlockMark)
-      continue
-    }
-
-    // 标题：行首标记淡色（光标行）/ 隐藏（非光标行），内容整行标题样式 + 行内扫描
-    const h = HEADING_RE.exec(text)
-    if (h) {
-      const markLen = h[1].length + h[2].length
-      builder.add(from, from + markLen, n === cursorLine ? dimMark : hiddenMark)
-      builder.add(from + markLen, line.to, headingMarks[h[1].length - 1])
-      scanInline(builder, from + markLen, text.slice(markLen))
-      continue
-    }
-
-    // GFM 表格（R10）：分隔行 + 上一行表头 → 整表标记（表头加粗/边框/分隔符淡色）
-    const tableNext = scanTable(builder, doc, n)
-    if (tableNext !== n) {
-      n = tableNext - 1
-      continue
-    }
-
-    // 分隔线：整行渲染为水平线（文本透明 + 上边框）
-    if (HR_RE.test(text)) {
-      builder.add(from, line.to, hrMark)
-      continue
-    }
-
-    // 引用：行首 > 淡色，整行左侧边框 + 内缩
-    if (QUOTE_RE.test(text)) {
-      builder.add(from, from + 1, dimMark)
-      builder.add(from, line.to, quoteMark)
-      if (text.length > 1) scanInline(builder, from + 1, text.slice(1))
-      continue
-    }
-
-    // 任务列表：标记淡色 + [ ]/[x] 替换为复选框 Widget
-    const task = TASK_RE.exec(text)
-    if (task) {
-      const markerLen = task[1].length
-      builder.add(from, from + markerLen, dimMark)
-      const boxFrom = from + markerLen
-      builder.add(
-        boxFrom,
-        boxFrom + 3,
-        Decoration.replace({ widget: new TaskBoxWidget(task[2].toLowerCase() === 'x') }),
-      )
-      scanInline(builder, boxFrom + 3, text.slice(markerLen + 3))
-      continue
-    }
-
-    // 普通列表：无序标记替换为 •（显示），有序标记淡色保留；缩进始终保留（嵌套列表）
-    const list = LIST_MARKER_RE.exec(text)
-    if (list) {
-      const indentLen = list[1].length
-      const markerLen = indentLen + list[2].length + list[3].length
-      if (UL_MARKER_RE.test(text)) {
-        builder.add(from + indentLen, from + markerLen, Decoration.replace({ widget: new BulletWidget() }))
-      } else {
-        builder.add(from + indentLen, from + markerLen, dimMark)
-      }
-      scanInline(builder, from + markerLen, text.slice(markerLen))
-      continue
-    }
-
-    // 纯文本行
-    scanInline(builder, from, text)
-  }
+  const cursorLine = state.doc.lineAt(state.selection.main.head).number
+  addRangeDecorations(builder, state, 0, state.doc.length, cursorLine)
   return builder.finish()
 }
 
 /* ------------------------------------------------------------------ */
-/* ViewPlugin：文档变化或光标行变化时重建                                 */
+/* ViewPlugin：docChanged / 光标跨行 → 全量语法树重建                    */
 /* ------------------------------------------------------------------ */
 
 function cursorLineOf(view: EditorView): number {
   return view.state.doc.lineAt(view.state.selection.main.head).number
-}
-
-function buildFor(view: EditorView): DecorationSet {
-  return buildDecorations(view.state)
 }
 
 const markdownDecorationPlugin = ViewPlugin.fromClass(
@@ -450,15 +487,15 @@ const markdownDecorationPlugin = ViewPlugin.fromClass(
 
     constructor(view: EditorView) {
       this.cursorLine = cursorLineOf(view)
-      this.decorations = buildFor(view)
+      this.decorations = buildDecorations(view.state)
     }
 
     update(update: ViewUpdate): void {
       const line = cursorLineOf(update.view)
-      // 性能：光标在同一行内移动（selectionSet 但 cursorLine 不变）不重算
       if (update.docChanged || line !== this.cursorLine) {
+        // 全量重建（语法树遍历 0.14ms/5000 行）；DOM 增量由 CM6 compare 处理
         this.cursorLine = line
-        this.decorations = buildFor(update.view)
+        this.decorations = buildDecorations(update.view.state)
       }
     }
   },

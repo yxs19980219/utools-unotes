@@ -12,7 +12,7 @@
  * 并发正确性（design.md 3.2）：savingRef 串行化 + 成功后的追平循环——
  * 保存期间的新输入在本次保存成功后立即再保存；失败不追平（避免无限重试循环）。
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeftIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -89,13 +89,22 @@ export default function NoteView({ noteId }: { noteId: string }) {
     if (ok && draftRef.current !== content) void save()
   }
 
-  /** 输入：更新草稿 + 重置防抖定时器 */
-  const handleChange = (value: string) => {
+  /** 输入：更新草稿 + 重置防抖定时器（useCallback 稳定引用：避免 @uiw 无谓 reconfigure） */
+  const handleChange = useCallback((value: string) => {
     draftRef.current = value
     setDraft(value)
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
     saveTimerRef.current = window.setTimeout(() => void save(), SAVE_DEBOUNCE_MS)
-  }
+  }, [])
+
+  /** Ctrl+S：清防抖定时器 + 立即保存（稳定引用） */
+  const handleSave = useCallback(() => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    void save()
+  }, [])
 
   /** 卸载：清防抖；若有未落盘改动立即 flush（fire-and-forget，路由切换无确认） */
   useEffect(() => {
@@ -167,14 +176,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
               ref={setEditorApi}
               value={draft}
               onChange={handleChange}
-              onSave={() => {
-                // Ctrl+S：清防抖定时器 + 立即保存
-                if (saveTimerRef.current !== null) {
-                  window.clearTimeout(saveTimerRef.current)
-                  saveTimerRef.current = null
-                }
-                void save()
-              }}
+              onSave={handleSave}
               autoFocus
               placeholder={'记录要点：# 标题、**加粗**、- 列表、``` 代码块 …'}
             />

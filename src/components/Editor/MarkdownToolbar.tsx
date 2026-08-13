@@ -7,6 +7,7 @@
  * - 块级：代码块/公式块/表格/分割线在光标处插入多行块
  * 放在笔记详情工具行下方一行（不额外占常驻空间，仅编辑态显示）。
  */
+import { memo } from 'react'
 import {
   Bold,
   Calculator,
@@ -80,7 +81,7 @@ const TOOLS: ToolDef[] = [
   { id: 'hr', label: '分割线', icon: Minus, run: (a) => a.block('\n---\n', '', { block: true }) },
 ]
 
-export default function MarkdownToolbar({ api }: { api: MarkdownInsertApi }) {
+export default memo(function MarkdownToolbar({ api }: { api: MarkdownInsertApi }) {
   return (
     <div
       className="flex shrink-0 flex-wrap items-center gap-0.5 px-1.5 py-1"
@@ -105,4 +106,4 @@ export default function MarkdownToolbar({ api }: { api: MarkdownInsertApi }) {
       ))}
     </div>
   )
-}
+})
