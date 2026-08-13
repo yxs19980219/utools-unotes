@@ -24,11 +24,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { formatTime } from '@/lib/format'
 import { useNotesStore } from '@/stores/notes'
 import { useObjectsStore } from '@/stores/objects'
 import { useTagsStore } from '@/stores/tags'
 import { useUiStore } from '@/stores/ui'
+import MetaInfoPanel from '@/components/MetaInfoPanel'
 
 /** 实时保存防抖（ms）：打字停顿间隙不写盘，500ms 平衡实时性与写盘频率（本地 db 几乎不会出错，无需失败重试） */
 const SAVE_DEBOUNCE_MS = 500
@@ -123,6 +123,14 @@ export default function NoteView({ noteId }: { noteId: string }) {
   // 编辑器插入 API（state 驱动：ref 变化不触发渲染，工具栏需要实时拿到实例）
   const [editorApi, setEditorApi] = useState<MarkdownInsertApi | null>(null)
 
+  /** 大纲跳转：编辑器定位到标题偏移（滚动 + 光标） */
+  const handleJump = useCallback(
+    (offset: number) => {
+      editorApi?.jumpTo(offset)
+    },
+    [editorApi],
+  )
+
   if (!note) {
     return (
       <Empty className="gap-2">
@@ -142,12 +150,15 @@ export default function NoteView({ noteId }: { noteId: string }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* 顶部工具行：返回 + 标题（去分割线，靠留白分区） */}
-      <div className="flex shrink-0 items-center gap-2 px-2 py-1.5">
+      {/* 顶部：返回 + 标题（加大）+ 标签紧跟（需求 2-4）：同一 flex-wrap 容器，无标签时无空行 */}
+      <div className="flex shrink-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 px-2 pb-1.5 pt-1">
         <Button variant="ghost" size="icon-sm" aria-label="返回" onClick={closeNote}>
           <ArrowLeftIcon data-icon />
         </Button>
-        <h2 className="min-w-0 flex-1 truncate text-sm font-medium" title={note.title}>
+        <h2
+          className="min-w-0 flex-1 truncate text-lg font-semibold leading-snug"
+          title={note.title}
+        >
           {note.title}
         </h2>
         {readonly && (
@@ -155,22 +166,18 @@ export default function NoteView({ noteId }: { noteId: string }) {
             已归档（只读）
           </Badge>
         )}
-      </div>
-
-      {/* 元信息行：标签 + 更新时间（编辑/只读共用，无分割线） */}
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-3 pb-1.5">
         {tagChips.map((t) => (
-          <TagChip key={t._id} tag={t} />
+          <TagChip key={t._id} tag={t} className="h-4.5 shrink-0 text-[0.7rem]" />
         ))}
-        <span className="ml-auto text-[0.7rem] text-muted-foreground/80">
-          更新于 {formatTime(note.updatedAt)}
-        </span>
       </div>
 
       {showEditor ? (
         <>
-          {/* Markdown 快捷操作栏（仅编辑时占一行） */}
-          <MarkdownToolbar api={editorApi ?? EMPTY_API} />
+          {/* Markdown 快捷操作栏 + ⓘ 元信息（需求 1/6）：同一细线包裹行，ⓘ 在最右 */}
+          <div className="flex shrink-0 items-center border-y border-border bg-background/60">
+            <MarkdownToolbar api={editorApi ?? EMPTY_API} />
+            <MetaInfoPanel note={note} onJump={handleJump} className="ml-auto" />
+          </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             <CodeMirrorEditor
               ref={setEditorApi}
@@ -208,5 +215,6 @@ export default function NoteView({ noteId }: { noteId: string }) {
 const EMPTY_API: MarkdownInsertApi = {
   wrap: () => {},
   block: () => {},
+  jumpTo: () => {},
   focus: () => {},
 }

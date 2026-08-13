@@ -12,7 +12,8 @@
     "smoke": "node scripts/smoke-data-layer.ts",
     "smoke:stores": "node scripts/smoke-stores.ts",
     "smoke:decorations": "node scripts/smoke-decorations.ts",
-    "ui-smoke": "node scripts/ui-smoke.mjs"
+    "ui-smoke": "node scripts/ui-smoke.mjs",
+    "smoke:outline": "node scripts/smoke-outline.ts"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",

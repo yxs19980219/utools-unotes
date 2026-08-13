@@ -47,6 +47,8 @@ export interface MarkdownInsertApi {
    * block=true 时在光标处插入多行块（prefix\\nsuffix），光标居中
    */
   block(prefix: string, suffix?: string, opts?: { block?: boolean; placeholder?: string }): void
+  /** 跳转定位：滚动到文档偏移并移动光标（元信息面板大纲跳转用） */
+  jumpTo(pos: number): void
   focus(): void
 }
 
@@ -132,6 +134,15 @@ const CodeMirrorEditor = memo(
           } else {
             insert(prefix, prefix.length)
           }
+          view.focus()
+        },
+        jumpTo(pos) {
+          const view = getView()
+          if (!view) return
+          view.dispatch({
+            selection: { anchor: pos },
+            effects: EditorView.scrollIntoView(pos),
+          })
           view.focus()
         },
         focus() {
