@@ -62,6 +62,13 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   /* ---- 装饰类（全部语义色，暗色随 Token 自动切换） ---- */
   /* 淡色语法标记（标题 # / 粗斜标记 / 列表符号 / 引用 > / 围栏） */
   '.sn-md-dim': { color: 'var(--muted-foreground)', opacity: '0.45' },
+  /* 标题标记 #：字号随标题级别递减（需求 12），其余同 dim */
+  '.sn-md-h1-mark': { color: 'var(--muted-foreground)', opacity: '0.45', fontSize: '0.9rem' },
+  '.sn-md-h2-mark': { color: 'var(--muted-foreground)', opacity: '0.45', fontSize: '0.82rem' },
+  '.sn-md-h3-mark': { color: 'var(--muted-foreground)', opacity: '0.45', fontSize: '0.75rem' },
+  '.sn-md-h4-mark': { color: 'var(--muted-foreground)', opacity: '0.45', fontSize: '0.7rem' },
+  '.sn-md-h5-mark': { color: 'var(--muted-foreground)', opacity: '0.45', fontSize: '0.65rem' },
+  '.sn-md-h6-mark': { color: 'var(--muted-foreground)', opacity: '0.45', fontSize: '0.6rem' },
   /* 非光标行标题/列表标记：完全收起（display:none 不占位）→ 内容顶格展示（Obsidian 折叠标记同款） */
   '.sn-md-hidden': { display: 'none' },
   /* 标题整行样式（字号/字重随级别，与 MarkdownView 只读渲染对齐） */
@@ -127,6 +134,11 @@ export const markdownEditorTheme: Extension = EditorView.theme({
     width: '1em',
     color: 'inherit',
   },
+  /* 嵌套列表缩进（需求 13）：源文本缩进空白替换为固定宽度 spacer */
+  '.sn-li-indent': {
+    display: 'inline-block',
+    width: '1em',
+  },
   /* GFM 表格（R10）：整表细边框 + muted 背景；表头行加粗 + 下边框 */
   '.sn-md-tbl': {
     backgroundColor: 'color-mix(in oklab, var(--muted) 45%, transparent)',
@@ -152,6 +164,10 @@ export const markdownEditorTheme: Extension = EditorView.theme({
 const dimMark = Decoration.mark({ class: 'sn-md-dim' })
 /** 隐藏标记（光标行机制：非光标行标题的 # 隐藏但保留占位） */
 const hiddenMark = Decoration.mark({ class: 'sn-md-hidden' })
+/** 标题标记 #：字号随级别递减（需求 12），光标行用 */
+const headingMarkers = [1, 2, 3, 4, 5, 6].map((level) =>
+  Decoration.mark({ class: `sn-md-h${level}-mark` }),
+)
 const headingMarks = [1, 2, 3, 4, 5, 6].map((level) =>
   Decoration.mark({ class: `sn-md-h${level}` }),
 )
@@ -189,10 +205,18 @@ class TaskBoxWidget extends WidgetType {
   }
 }
 
-/** 无序列表标记：源文本 `- ` 替换显示为项目符号 `•`（Obsidian 同款，源 markdown 不变） */
+/** 无序列表标记：源文本 `- ` 替换显示为项目符号（需求 14：嵌套深度决定符号形态） */
 class BulletWidget extends WidgetType {
-  eq(): boolean {
-    return true
+  /** 嵌套深度（1 = 最外层）：1 实心圆点 • / 2 空心圆点 ◦ / 3+ 实心方点 ▪ */
+  readonly depth: number
+
+  constructor(depth: number) {
+    super()
+    this.depth = depth
+  }
+
+  eq(other: BulletWidget): boolean {
+    return other.depth === this.depth
   }
 
   ignoreEvent(): boolean {
@@ -202,9 +226,35 @@ class BulletWidget extends WidgetType {
   toDOM(): HTMLElement {
     const dot = document.createElement('span')
     dot.className = 'sn-list-bullet'
-    dot.textContent = '•'
+    dot.textContent = this.depth <= 1 ? '•' : this.depth === 2 ? '◦' : '▪'
     dot.setAttribute('aria-hidden', 'true')
     return dot
+  }
+}
+
+/** 嵌套列表缩进 spacer（需求 13）：替换源文本缩进空白，宽度随深度递增 */
+class ListIndentWidget extends WidgetType {
+  readonly depth: number
+
+  constructor(depth: number) {
+    super()
+    this.depth = depth
+  }
+
+  eq(other: ListIndentWidget): boolean {
+    return other.depth === this.depth
+  }
+
+  ignoreEvent(): boolean {
+    return true
+  }
+
+  toDOM(): HTMLElement {
+    const spacer = document.createElement('span')
+    spacer.className = 'sn-li-indent'
+    spacer.style.width = `${this.depth * 0.9}em`
+    spacer.setAttribute('aria-hidden', 'true')
+    return spacer
   }
 }
 
@@ -262,7 +312,7 @@ function addRangeDecorations(
           addLink(builder, node)
           return true
         case 'ListItem':
-          addListItem(builder, node)
+          addListItem(builder, state, node)
           return true
         case 'TaskMarker': {
           // 任务标记 [x]/[ ] → 复选框 Widget（读文本判断勾选）
@@ -294,7 +344,8 @@ function addHeading(
   const mark = node.getChild('HeaderMark')
   if (mark) {
     const isCursorLine = state.doc.lineAt(mark.from).number === cursorLine
-    builder.add(mark.from, mark.to, isCursorLine ? dimMark : hiddenMark)
+    // 光标行：级别字号标记（需求 12）；非光标行：隐藏（占位保留）
+    builder.add(mark.from, mark.to, isCursorLine ? headingMarkers[level - 1] : hiddenMark)
   }
   // 标题内容行样式（# 标记之后到行尾；嵌套（如内容含 StrongEmphasis）由子节点递归补充）
   const lineEnd = state.doc.lineAt(node.to).to
@@ -344,29 +395,47 @@ function addLink(builder: RangeSetBuilder<Decoration>, node: SyntaxNode): void {
   }
 }
 
-/** 列表项：ListMark 替换/淡色，递归子项（嵌套层级由 ListItem 祖先链得出，④ 消费） */
+/** 列表项：缩进 spacer（需求 13）+ ListMark 替换/淡色 + 嵌套符号（需求 14） */
 function addListItem(
   builder: RangeSetBuilder<Decoration>,
+  state: EditorState,
   node: SyntaxNode,
 ): void {
   const mark = node.getChild('ListMark')
   if (!mark) return
   const contentStart = nextChildStart(node, mark)
+  const depth = listDepth(node)
+  const line = state.doc.lineAt(node.from)
+  // 行首缩进空白（嵌套列表的源文本空格）→ 固定宽度 spacer（深度递增），源文本零改动
+  if (line.from < mark.from) {
+    builder.add(line.from, mark.from, Decoration.replace({ widget: new ListIndentWidget(depth - 1) }))
+  }
   const isTask = !!node.getChild('Task')
   if (isTask) {
     // 任务列表：标记淡色（复选框由 TaskMarker 处理）
     builder.add(mark.from, mark.to, dimMark)
   } else {
-    // 普通列表：无序标记替换为 • Widget（含后续空白），有序标记淡色保留
+    // 普通列表：无序标记替换为嵌套符号 Widget（含后续空白），有序标记淡色保留
     const parent = node.parent
     const isOrdered = !!parent && parent.name === 'OrderedList'
     if (isOrdered) {
       builder.add(mark.from, mark.to, dimMark)
     } else {
-      builder.add(mark.from, contentStart, Decoration.replace({ widget: new BulletWidget() }))
+      builder.add(mark.from, contentStart, Decoration.replace({ widget: new BulletWidget(depth) }))
     }
   }
   // 嵌套子列表（BulletList 等）由 iterate enter 递归处理；列表标记无光标行显隐机制
+}
+
+/** 列表嵌套深度：ListItem 祖先链中 BulletList/OrderedList 计数（最外层 = 1） */
+function listDepth(node: SyntaxNode): number {
+  let depth = 0
+  let n = node.parent
+  while (n) {
+    if (n.name === 'BulletList' || n.name === 'OrderedList') depth += 1
+    n = n.parent
+  }
+  return Math.max(1, depth)
 }
 
 /** 引用：QuoteMark dim + 覆盖行 quoteMark */

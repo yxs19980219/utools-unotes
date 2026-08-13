@@ -65,10 +65,10 @@ function main() {
   // 1. 标题：光标行标记淡色，非光标行隐藏；内容行有对应级别样式
   {
     const l1 = lineAt(1)
-    // 语法树版：HeaderMark 仅覆盖 # 本身（不含后续空白）
+    // 语法树版：HeaderMark 仅覆盖 # 本身（不含后续空白）；光标行标记带级别字号类（需求 12）
     const l1Marker = items.filter((i) => i.from === 0 && i.to === 1)
     assert.equal(l1Marker.length, 1, 'h1 标记范围 [0,1)')
-    assert.equal(l1Marker[0].cls, 'sn-md-dim', '光标行标题标记 → 淡色')
+    assert.equal(l1Marker[0].cls, 'sn-md-h1-mark', '光标行标题标记 → 级别字号类（淡色）')
     const l1Content = items.filter((i) => i.from === 1 && i.to === l1.to)
     assert.equal(l1Content[0].cls, 'sn-md-h1', 'h1 内容行样式')
 
@@ -213,6 +213,36 @@ function main() {
     const boldPos = t(4).from + boldRow.indexOf('**值4**') + 2
     assert.equal(clsAt(items3, boldPos).includes('sn-md-bold'), false, '单元格内不做行内扫描')
     ok('表格：表头加粗/边框/分隔符淡色（R10）')
+  }
+
+  // 9. 嵌套列表（需求 13/14）：符号随深度变化 •/◦/▪ + 缩进 spacer 随深度递增
+  {
+    const nestedDoc = ['- 一级项', '  - 二级项', '    - 三级项', '      - 四级项'].join('\n')
+    const state4 = EditorState.create({ doc: nestedDoc, selection: { anchor: 0 }, extensions: LANG_EXT })
+    const set4 = buildDecorations(state4)
+    const items4 = collect(set4)
+    // 符号 Widget：按深度取符号文本（node 直跑 TS，class 名保留）
+    const widgets = items4
+      .filter((i) => i.widget !== null)
+      .map((i) => ({
+        from: i.from,
+        depth: (i.widget as { depth?: number } | null)?.depth,
+        kind: i.widget?.constructor.name,
+      }))
+    const bullets = widgets.filter((w) => w.kind === 'BulletWidget')
+    assert.deepEqual(
+      bullets.map((b) => b.depth),
+      [1, 2, 3, 4],
+      '四个嵌套层级各有 BulletWidget，深度 1/2/3/4',
+    )
+    const indents = widgets.filter((w) => w.kind === 'ListIndentWidget')
+    assert.deepEqual(
+      indents.map((i) => i.depth),
+      [1, 2, 3],
+      '二级起每行有缩进 spacer（一级无），深度 1/2/3',
+    )
+    // 符号字符映射：depth 1 → • / 2 → ◦ / 3+ → ▪（toDOM 需 DOM，depth 断言即可）
+    ok('嵌套列表：符号深度 1/2/3/4 + 缩进 spacer 深度 1/2/3（需求 13/14）')
   }
 
   console.log(`\n全部通过：${passed} 项断言`)

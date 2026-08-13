@@ -15,13 +15,12 @@
  *   wrap/block 在光标处插入 markdown 语法，源文本始终为标准 markdown
  */
 import { forwardRef, memo, useImperativeHandle, useMemo, useRef } from 'react'
-import type { EditorView } from '@codemirror/view'
 import CodeMirror from '@uiw/react-codemirror'
 import { indentWithTab } from '@codemirror/commands'
 import type { BasicSetupOptions } from '@uiw/codemirror-extensions-basic-setup'
 import { markdown } from '@codemirror/lang-markdown'
 import { GFM } from '@lezer/markdown'
-import { keymap } from '@codemirror/view'
+import { keymap, EditorView } from '@codemirror/view'
 
 import { cn } from '@/lib/utils'
 import {
@@ -147,6 +146,8 @@ const CodeMirrorEditor = memo(
       () => [
         // GFM 扩展：语法树解析表格/任务列表/删除线等（装饰由 markdownDecorations 从语法树派生）
         markdown({ extensions: [GFM] }),
+        // 软换行（需求 15）：超长行按视口宽度自动换行，不再横向延伸
+        EditorView.lineWrapping,
         markdownDecorationExtension,
         keymap.of([
           // Tab 缩进 / Shift+Tab 反缩进（嵌套列表必备，basicSetup 默认不含）
