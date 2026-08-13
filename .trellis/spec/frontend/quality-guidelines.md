@@ -14,6 +14,7 @@ npm run build            # tsc -b && vite build → dist/（检查无 developmen
 npm run smoke            # node scripts/smoke-data-layer.ts（数据层 + 搜索）
 npm run smoke:stores     # node scripts/smoke-stores.ts（store 编排 + 一致性）
 npm run smoke:decorations# node scripts/smoke-decorations.ts（编辑器装饰器，headless）
+npm run smoke:tableModel # node scripts/smoke-tableModel.ts（Markdown 表格模型与 round-trip）
 ```
 
 无 lint（未配置 ESLint）、无单测框架 —— **冒烟测试体系替代单测**：node 直测（无 uTools 环境），覆盖关键契约，跑全部通过即视为可交付。原则：不为展示层写测试（变更频繁收益低），为**数据契约与跨 store 编排**写冒烟（回归收益高）。
@@ -94,6 +95,7 @@ npm run smoke:decorations# node scripts/smoke-decorations.ts（编辑器装饰�
 8. **radix ScrollArea 内容 wrapper 破坏百分比高度**：Viewport 直接子级是 radix 内联 `<div style="min-width:100%; display:table">`——display:table 把子元素包进匿名 table-cell（高度按行内容不传），且内联 style 只能被 `!important` 覆盖。需要内容撑满视口的场景：scoped CSS（如 `.sidebar-fill > [data-slot='scroll-area-viewport'] > div { display:block !important; min-width:100%; height:100% }`），内容多时溢出 wrapper 仍随 Viewport 滚动。
 9. **destructive 菜单项必须是红底白字（悬停时）**：08-12 把 ContextMenuItem destructive 从 `focus:bg-destructive + focus:text-destructive-foreground`（红底白字）改成 `bg-destructive/10 + text-destructive`（淡红底红字）后用户反馈“红色遮住文字”——红字在红底上同色系淹没、整行泛红。**删除项悬停必须保持红底白字（白字在红底上对比清晰）**；dropdown-menu 与 context-menu 的 destructive variant 样式必须一致（本项目已统一），改 UI 组件库样式前先评估所有使用方（ContextMenuItem 同时服务对象行/标签行右键菜单）。
 10. **hover 弹出操作区必须占位而非 display 切换**：`hidden group-hover:flex` 会让 hover 时操作按钮出现、挤压标题截断位置，用户感知为“卡片大小变化”。**操作区应常占位 + opacity 瞬时切换**（`pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100`，不加 transition），布局稳定且无动画。
+11. **代码块工具栏插入必须保留内容空行**：围栏插入文本应为 `prefix + "\\n\\n" + suffix + "\\n"`，光标放在两条换行之间；若只插入一条换行，用户输入会与闭合围栏粘在同一行，后续表格/块节点将被解析进代码块。光标位于代码块开围栏行时，其他块级插入命令必须定位到 `FencedCode.to` 之后。
 
 **渲染层验证标准**：涉及组件/布局/编辑器改动的任务，必须跑 `npm run ui-smoke`（playwright-core + 系统 Edge 无头，走 MemoryDb 验证对象→笔记→钉住→首页核心闭环 + 无 console/pageerror）。Dev server 需先启动（5173）。
 

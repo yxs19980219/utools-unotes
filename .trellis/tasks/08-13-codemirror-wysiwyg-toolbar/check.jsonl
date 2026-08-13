@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend quality-check entry point"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Widget, React and token consistency review"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Required smoke, UI, performance and render-layer checks"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type and shared contract review"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Outer/nested editor transaction flow review"}
+{"file": ".trellis/tasks/08-13-codemirror-wysiwyg-toolbar/research/current-architecture.md", "reason": "Verify implementation against repository evidence"}
+{"file": ".trellis/tasks/08-13-codemirror-wysiwyg-toolbar/research/codemirror-ecosystem.md", "reason": "Verify library and API assumptions"}
+{"file": ".trellis/tasks/08-13-codemirror-wysiwyg-toolbar/research/decision-matrix.md", "reason": "Verify selected trade-offs and deferred scope"}

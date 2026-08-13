@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec index and pre-development checklist"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "React component, CodeMirror decoration, widget and design-token conventions"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Frontend quality gates, smoke tests, widget pitfalls and UI verification"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript and shared contract rules"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer data-flow and contract checklist"}
+{"file": ".trellis/tasks/08-13-codemirror-wysiwyg-toolbar/research/current-architecture.md", "reason": "Repository evidence and current editor constraints"}
+{"file": ".trellis/tasks/08-13-codemirror-wysiwyg-toolbar/research/codemirror-ecosystem.md", "reason": "Official and community CodeMirror research"}
+{"file": ".trellis/tasks/08-13-codemirror-wysiwyg-toolbar/research/decision-matrix.md", "reason": "Chosen architecture trade-offs and recommendation"}

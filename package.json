@@ -1,7 +1,7 @@
 {
   "name": "utools-sourcenote",
   "private": true,
-  "version": "1.3.3",
+  "version": "1.4.0",
   "type": "module",
   "description": "源笔记：以学习对象为载体，记录要点、快速检索的 uTools 插件",
   "scripts": {
@@ -14,7 +14,8 @@
     "smoke:decorations": "node scripts/smoke-decorations.ts",
     "ui-smoke": "node scripts/ui-smoke.mjs",
     "smoke:outline": "node scripts/smoke-outline.ts",
-    "smoke:tableOps": "node scripts/smoke-tableOps.ts"
+    "smoke:tableOps": "node scripts/smoke-tableOps.ts",
+    "smoke:tableModel": "node scripts/smoke-tableModel.ts"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.2",

@@ -127,6 +127,56 @@ try {
   await waitFor(() => document.querySelectorAll('.sn-task-box').length >= 1)
   const taskCount = await page.evaluate(() => document.querySelectorAll('.sn-task-box').length)
   ok('快捷工具栏：勾选框插入', taskCount >= 1)
+
+  // 3c. 代码块：视觉代码区域 + 语言选择
+  await page.getByRole('button', { name: '代码块', exact: true }).click()
+  await page.keyboard.type('const editorProbe = true')
+  await waitFor(() => document.querySelectorAll('.sn-md-codeblock').length >= 1)
+  const codePicker = page.locator('.sn-lang-picker').last()
+  await codePicker.selectOption('python')
+  ok('代码块：插入后出现视觉代码区域', (await page.locator('.sn-md-codeblock').count()) >= 1)
+  ok('代码块：语言选择器可切换', (await page.locator('.sn-lang-picker').last().inputValue()) === 'python')
+
+  // 3d. 真实表格：单元格编辑 + 增删结构
+  await page.getByRole('button', { name: '表格', exact: true }).click()
+  await page.locator('.sn-md-table-widget table').last().waitFor()
+  ok('表格：插入后出现真实 table', (await page.locator('.sn-md-table-widget table').count()) >= 1)
+  await page.locator('.sn-md-table-cell[data-cell-section="body"]').first().click()
+  await page.locator('.sn-md-table-cell-editor .cm-content').waitFor()
+  await page.keyboard.type('单元格编辑')
+  await page.keyboard.press('Tab')
+  await waitFor(() => document.querySelector('.sn-md-table-cell-editor')?.closest('[data-cell-key]')?.getAttribute('data-cell-key') === 'body:0:1')
+  ok('表格：Tab 移动到下一单元格', true)
+  await page.keyboard.press('Shift+Tab')
+  await waitFor(() => document.querySelector('.sn-md-table-cell-editor')?.closest('[data-cell-key]')?.getAttribute('data-cell-key') === 'body:0:0')
+  ok('表格：Shift+Tab 返回上一单元格', true)
+  await page.keyboard.press('Tab')
+  await waitFor(() => document.querySelector('.sn-md-table-cell-editor')?.closest('[data-cell-key]')?.getAttribute('data-cell-key') === 'body:0:1')
+  await page.keyboard.press('Enter')
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget tbody tr').length >= 2)
+  await waitFor(() => document.querySelector('.sn-md-table-cell-editor')?.closest('[data-cell-key]')?.getAttribute('data-cell-key') === 'body:1:1')
+  ok('表格：Enter 新增行并下移', true)
+  await page.getByRole('button', { name: '＋行', exact: true }).last().click()
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget tbody tr').length >= 3)
+  await page.getByRole('button', { name: '＋列', exact: true }).last().click()
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget thead th').length >= 3)
+  const tableProbe = await page.evaluate(() => ({
+    headers: document.querySelectorAll('.sn-md-table-widget thead th').length,
+    rows: document.querySelectorAll('.sn-md-table-widget tbody tr').length,
+    hasEditedCell: [...document.querySelectorAll('.sn-md-table-cell')].some((cell) => cell.textContent?.includes('单元格编辑')),
+  }))
+  ok('表格：单元格可编辑', tableProbe.hasEditedCell)
+  ok('表格：可新增行列', tableProbe.headers >= 3 && tableProbe.rows >= 2)
+  await page.getByRole('button', { name: '－列', exact: true }).last().click()
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget thead th').length === 2)
+  await page.getByRole('button', { name: '－行', exact: true }).last().click()
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget tbody tr').length === 2)
+  ok('表格：可删除行列', true)
+  await page.keyboard.press('Control+z')
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget tbody tr').length === 3)
+  await page.keyboard.press('Control+z')
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget thead th').length === 3)
+  ok('表格：结构操作支持撤销', true)
   // 实时保存：无「保存正文」按钮；防抖 500ms 落盘 → 固定 900ms 余量
   await page.waitForTimeout(900)
   ok('无保存正文按钮', (await page.getByRole('button', { name: /保存正文/ }).count()) === 0)
@@ -136,11 +186,15 @@ try {
   await page.getByText('冒烟笔记').first().waitFor()
   await page.getByText('冒烟笔记').first().click()
   await page.locator('.cm-content').waitFor()
-  const persisted = await page.evaluate(
-    () => document.querySelector('.cm-content')?.textContent ?? '',
-  )
+  const persisted = await page.evaluate(() => ({
+    text: document.querySelector('.cm-content')?.textContent ?? '',
+    table: document.querySelectorAll('.sn-md-table-widget table').length,
+    code: document.querySelectorAll('.sn-md-codeblock').length,
+    editedCell: [...document.querySelectorAll('.sn-md-table-cell')].some((cell) => cell.textContent?.includes('单元格编辑')),
+  }))
   ok('实时保存：重开后正文仍在（未手动保存）',
-    persisted.includes('列表项一') && persisted.includes('待办项'))
+    persisted.text.includes('列表项一') && persisted.text.includes('待办项'))
+  ok('编辑器：代码块/表格状态可持久化', persisted.table >= 1 && persisted.code >= 1 && persisted.editedCell)
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.getByRole('tab', { name: '首页' }).click()
   await page.locator('aside').getByText('UI 冒烟测试对象').first().waitFor()

@@ -91,6 +91,74 @@
 
 ---
 
+## Markdown Block Widget / Nested Editor Contract（08-13-codemirror-wysiwyg-toolbar）
+
+### 1. Scope / Trigger
+
+跨行 Markdown 表格需要改变编辑器垂直布局并承载单元格输入时，必须使用 StateField 直接提供 block decoration；不得把这类 decoration 放进读取 viewport 后才计算的 ViewPlugin。当前正文仍以 Markdown 字符串为唯一持久化真相。
+
+### 2. Signatures
+
+- `parseMarkdownTable(text: string, from?: number): MarkdownTableModel | null`
+- `buildTableBlockDecorations(state: EditorState): DecorationSet`
+- `markdownBlockWidgetExtension: Extension`
+- `TableWidget extends WidgetType`
+- `tableSyncAnnotation: AnnotationType<boolean>`
+
+### 3. Contracts
+
+- 完整 GFM 表格生成一个 `[from, to)` block replacement；半成品/非法表格不生成 widget。
+- 单元格 `contentFrom/contentTo` 是外层 Markdown 的绝对范围；nested editor 的 `|` 必须在 outer transaction 中转义为 `\\|`。
+- nested cell editor 只允许单行内容；Tab/Shift+Tab/Enter/Escape 由 nested keymap 接管。
+- outer doc transaction 是唯一保存/撤销来源；React 不持有逐字符 cell 状态。
+- widget DOM 使用 `view.dom.ownerDocument`；DOM 仅为视图投影，不能用 `contentEditable` 或 `innerHTML` 直接改 outer doc。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 行为 |
+|---|---|
+| 缺少分隔行/列数不匹配/空行 | `parseMarkdownTable` 返回 `null`，保留源码 |
+| 单元格包含未转义 `|` | nested 输入事务转为 `\\|` 后写回 |
+| 结构操作触碰最小边界 | 纯函数返回 `null`，不 dispatch |
+| nested editor 所在表格被外层删除 | 销毁 nested view，不向过期 offset 写回 |
+| widget 结构变化 | `updateDOM` 返回 `false`，让 CM6 重建并清理旧 nested view |
+| widget 仅文本变化 | 保留 DOM/焦点，通过 `updateDOM` 同步当前 cell |
+
+### 5. Good / Base / Bad Cases
+
+- Good：`StateField.define<DecorationSet>` + `EditorView.decorations.from(field)`；cell 变化通过带 `tableSyncAnnotation` 的 outer transaction。
+- Base：普通 Markdown 行继续由 `markdownDecorations` 的 ViewPlugin 做 mark/inline widget。
+- Bad：在 `ViewPlugin` 中提供跨行 `Decoration.replace({ block: true })`，或直接修改 `.cm-content` / widget DOM 作为数据源。
+
+### 6. Tests Required
+
+- `npm run smoke:tableModel`：转义 pipe、范围、对齐、不规则行和 round-trip。
+- `npm run smoke:decorations`：完整表格一个 block widget、非法表格无 widget、标题/列表/代码块回归。
+- `npm run ui-smoke`：真实 table、单元格输入、Tab/Shift+Tab/Enter、增删行列、撤销、重开持久化、无 page/console error。
+- 性能门禁：`node scripts/bench-decorations.ts`、`DOC_LINES=5000 node scripts/perf-input.mjs`。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+const plugin = ViewPlugin.fromClass(class {
+  decorations = buildTableWidgets(view);
+}, { decorations: value => value.decorations });
+```
+
+#### Correct
+
+```ts
+const field = StateField.define<DecorationSet>({
+  create: buildTableBlockDecorations,
+  update: (value, tr) => tr.docChanged
+    ? buildTableBlockDecorations(tr.state)
+    : value.map(tr.changes),
+  provide: field => EditorView.decorations.from(field),
+});
+```
+
 ## Common Mistakes
 
 - **radix Popover 用 onFocus 打开会被同点击序列误关（08-12 实测）**：点击输入框时 focus 触发 `setOpen(true)`，但 DismissableLayer 把同一点击序列的后续事件判为外部点击 → Popover 立即关闭。现象：标签联想永不显示（TagInput）。修复：`onChange` 时兜底 `setOpen(true)`（输入字符即重开）；不要依赖 onFocus 单独打开

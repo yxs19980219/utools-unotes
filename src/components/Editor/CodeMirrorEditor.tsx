@@ -4,7 +4,7 @@
  * 基于 @uiw/react-codemirror 4.25.11（API 以 node_modules 类型定义核实）：
  * - theme 走自研 EditorView.theme（markdownDecorations.ts，语义色 CSS 变量）
  * - 扩展：@codemirror/lang-markdown（列表 Enter 续行等语言能力）+ 即时渲染装饰
- *   （markdownDecorationExtension）+ Ctrl/Cmd+S 保存 keymap（run 返回 true 阻断默认）
+ *   （markdownDecorationExtension）+ 表格 block widget（StateField）+ Ctrl/Cmd+S 保存 keymap
  * - basicSetup 精简：去行号/折叠槽/自动补全/默认语法高亮（显示完全由装饰控制，
  *   避免 defaultHighlightStyle 的标题样式与自研装饰冲突）
  * - 受控 value：@uiw 内部在 onChange 后比对 value 与 doc，相等不 dispatch，
@@ -28,6 +28,7 @@ import {
   markdownDecorationExtension,
   markdownEditorTheme,
 } from './markdownDecorations'
+import { markdownBlockWidgetExtension } from './markdownBlockWidgets'
 
 interface CodeMirrorEditorProps {
   value: string
@@ -112,17 +113,17 @@ const CodeMirrorEditor = memo(
               const marks = node.getChildren('CodeMark')
               const contentFrom = marks[0]?.to ?? node.from
               const contentTo = marks.length > 1 ? marks[marks.length - 1].from : node.to
-              // 光标在内容区或闭围栏行（开围栏行除外）→ 插到围栏结束（行号判断，覆盖边界）
+              // 光标在围栏任意一行 → 插到围栏结束，避免表格/代码块嵌入代码内容
               const openLine = view.state.doc.lineAt(Math.min(contentFrom, view.state.doc.length)).number
               const closeLine = view.state.doc.lineAt(Math.min(contentTo, view.state.doc.length)).number
               const cursorLine = view.state.doc.lineAt(head).number
-              if (cursorLine > openLine && cursorLine <= closeLine) {
+              if (cursorLine >= openLine && cursorLine <= closeLine) {
                 insertPos = node.to
                 lead = '\n\n'
               }
             }
-            const text = lead + (suffix ? `${prefix}\n${suffix}\n` : prefix)
-            // caret：suffix 有 → 落在 prefix 内容起点后；无 → 文本末尾（text 已含 lead，勿重复加）
+            const text = lead + (suffix ? `${prefix}\n\n${suffix}\n` : prefix)
+            // caret：suffix 有 → 落在 prefix 后的空内容行；无 → 文本末尾（text 已含 lead，勿重复加）
             const caret = insertPos + (suffix ? lead.length + prefix.length + 1 : text.length)
             view.dispatch({
               changes: { from: insertPos, to: insertPos, insert: text },
@@ -200,6 +201,7 @@ const CodeMirrorEditor = memo(
         // 软换行（需求 15）：超长行按视口宽度自动换行，不再横向延伸
         EditorView.lineWrapping,
         markdownDecorationExtension,
+        markdownBlockWidgetExtension,
         keymap.of([
           // Tab 缩进 / Shift+Tab 反缩进（嵌套列表必备，basicSetup 默认不含）
           indentWithTab,

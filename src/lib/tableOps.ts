@@ -5,19 +5,19 @@
  * 非法操作（删到边界）返回 null，调用方忽略。
  * 单元格拼接统一 `| a | b |` 格式（trim 单元格文本）。
  */
+import {
+  escapeUnescapedTablePipes,
+  parseTableRowCells,
+} from './markdownTableModel.ts'
 
-/** 行 → 单元格数组（去首尾 |，逐格 trim） */
+/** 行 → 单元格数组（去首尾 |、逐格 trim，并还原转义管道符） */
 export function tableCells(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\||\|$/g, '')
-    .split('|')
-    .map((c) => c.trim())
+  return parseTableRowCells(line).map((cell) => cell.text)
 }
 
-/** 单元格数组 → 行文本 */
+/** 单元格数组 → 行文本（写回时只转义尚未转义的管道符） */
 export function joinCells(cells: string[]): string {
-  return `| ${cells.join(' | ')} |`
+  return `| ${cells.map(escapeUnescapedTablePipes).join(' | ')} |`
 }
 
 /** 表列数（按分隔行计算；解析失败返回 0） */

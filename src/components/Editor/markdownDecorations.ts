@@ -6,8 +6,9 @@
  *   （仅 ViewPlugin + decorations，不拦截事务）
  * - 全部样式走语义色 CSS 变量；暗色模式随 html.dark Token 自动切换
  * - 语法覆盖：标题 #~######、粗体/斜体/行内代码、链接、列表（含任务复选框/嵌套）、
- *   引用、分隔线、代码块围栏、GFM 表格（表头加粗/边框/分隔符淡色，单元格内不 scanInline）
- * - 光标行机制：光标行显示淡色标题标记，非光标行标记隐藏（占位保留）但标题样式保留
+ *   引用、分隔线、代码块围栏；真实 GFM 表格由 markdownBlockWidgets.ts 的 StateField 承载
+ * - 光标行机制：光标行显示可编辑语法标记，非光标行隐藏语法标记但保留标题/代码内容样式
+ * - `buildDecorations` 默认保留表格 headless 断言；运行时通过 `includeTables: false` 避免与 block widget 重叠
  *
  * 性能策略（08-13-perf-smoothness design.md §5，v3 最终版）：
  * - 装饰从 lezer 语法树派生（@codemirror/lang-markdown + GFM 扩展，解析器增量更新）
@@ -28,8 +29,6 @@ import {
 } from '@codemirror/view'
 import { syntaxTree } from '@codemirror/language'
 import type { SyntaxNode } from '@lezer/common'
-import { addTableCol, addTableRow, removeTableCol, removeTableRow } from '../../lib/tableOps.ts'
-
 /* ------------------------------------------------------------------ */
 /* 编辑器主题（chrome + 装饰类样式）：全部语义色                          */
 /* ------------------------------------------------------------------ */
@@ -97,6 +96,10 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   '.sn-md-quote': { borderLeft: '2px solid var(--border)', paddingLeft: '6px' },
   '.sn-md-fence': { color: 'var(--muted-foreground)', opacity: '0.45' },
   '.sn-md-codeblock': {
+    display: 'inline-block',
+    minWidth: '100%',
+    boxSizing: 'border-box',
+    padding: '0 6px',
     fontFamily: 'var(--font-mono)',
     fontSize: '0.82em',
     backgroundColor: 'var(--muted)',
@@ -150,30 +153,69 @@ export const markdownEditorTheme: Extension = EditorView.theme({
     cursor: 'default',
     backgroundColor: 'color-mix(in oklab, var(--muted) 60%, transparent)',
   },
-  /* 表格工具条（需求 11）：光标所在表格的表头行首悬浮按钮组 */
-  '.sn-table-toolbar': {
-    display: 'inline-flex',
+  /* 真实表格 Block Widget（design.md §3）：DOM 只显示，输入由 nested CM6 承载 */
+  '.sn-md-table-widget': {
+    display: 'block',
+    minWidth: '0',
+    margin: '0.35rem 0',
+    overflowX: 'auto',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    backgroundColor: 'color-mix(in oklab, var(--muted) 35%, transparent)',
+  },
+  '.sn-md-table-widget table': {
+    width: '100%',
+    minWidth: '28rem',
+    borderCollapse: 'collapse',
+    fontSize: '0.9rem',
+  },
+  '.sn-md-table-widget th, .sn-md-table-widget td': {
+    minWidth: '5rem',
+    borderBottom: '1px solid var(--border)',
+    padding: '0.3rem 0.5rem',
+    textAlign: 'left',
+    verticalAlign: 'top',
+    whiteSpace: 'pre-wrap',
+  },
+  '.sn-md-table-widget th': {
+    fontWeight: '600',
+    backgroundColor: 'color-mix(in oklab, var(--muted) 55%, transparent)',
+  },
+  '.sn-md-table-widget tr:last-child td': { borderBottom: 'none' },
+  '.sn-md-table-cell-editing': {
+    padding: '0',
+    backgroundColor: 'var(--background)',
+  },
+  '.sn-md-table-cell-editor .cm-editor': {
+    minWidth: '5rem',
+    backgroundColor: 'transparent',
+    color: 'var(--foreground)',
+    fontFamily: 'var(--font-sans)',
+    fontSize: '0.9rem',
+  },
+  '.sn-md-table-cell-editor .cm-content': { padding: '0.3rem 0.5rem' },
+  '.sn-md-table-cell-editor .cm-line': { padding: '0' },
+  '.sn-md-table-toolbar': {
+    display: 'flex',
     alignItems: 'center',
     gap: '2px',
-    marginRight: '6px',
-    borderRadius: '4px',
+    padding: '2px 4px',
+    borderBottom: '1px solid var(--border)',
     backgroundColor: 'var(--muted)',
-    padding: '0 2px',
-    verticalAlign: 'middle',
   },
-  '.sn-table-toolbar button': {
+  '.sn-md-table-toolbar button': {
     border: 'none',
-    background: 'transparent',
+    borderRadius: 'var(--radius-sm)',
+    padding: '1px 5px',
     color: 'var(--muted-foreground)',
+    backgroundColor: 'transparent',
     fontSize: '0.7rem',
     lineHeight: '1.2',
-    padding: '1px 3px',
-    borderRadius: '3px',
     cursor: 'pointer',
   },
-  '.sn-table-toolbar button:hover': {
-    backgroundColor: 'var(--accent)',
+  '.sn-md-table-toolbar button:hover': {
     color: 'var(--foreground)',
+    backgroundColor: 'var(--accent)',
   },
   /* 代码块语言选择器（需求 10）：围栏行内原生 select，淡色小字 */
   '.sn-lang-picker': {
@@ -367,7 +409,8 @@ class LangPickerWidget extends WidgetType {
     return true
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
+    const document = view.dom.ownerDocument
     const sel = document.createElement('select')
     sel.className = 'sn-lang-picker'
     sel.setAttribute('aria-label', '代码块语言')
@@ -397,91 +440,6 @@ class LangPickerWidget extends WidgetType {
   }
 }
 
-/** 表格工具条（需求 11）：光标所在表格的表头行首按钮组（增删行列） */
-class TableToolbarWidget extends WidgetType {
-  /** 表头行行首位置（装饰生成时快照；点击时文档未变则仍准确，变化后装饰已重建） */
-  readonly tableFrom: number
-
-  constructor(tableFrom: number) {
-    super()
-    this.tableFrom = tableFrom
-  }
-
-  eq(other: TableToolbarWidget): boolean {
-    return other.tableFrom === this.tableFrom
-  }
-
-  ignoreEvent(): boolean {
-    return true
-  }
-
-  toDOM(): HTMLElement {
-    const bar = document.createElement('span')
-    bar.className = 'sn-table-toolbar'
-    bar.setAttribute('role', 'toolbar')
-    bar.setAttribute('aria-label', '表格操作')
-    const ops: [string, string][] = [
-      ['addRow', '＋行'],
-      ['delRow', '－行'],
-      ['addCol', '＋列'],
-      ['delCol', '－列'],
-    ]
-    for (const [op, label] of ops) {
-      const btn = document.createElement('button')
-      btn.type = 'button'
-      btn.dataset.op = op
-      btn.textContent = label
-      btn.setAttribute('aria-label', label)
-      btn.addEventListener('click', () => {
-        const view = EditorView.findFromDOM(bar)
-        if (view) applyTableOp(view, this.tableFrom, op)
-      })
-      bar.appendChild(btn)
-    }
-    return bar
-  }
-}
-
-/** 表格增删行列：定位光标所在表格块 → 行级源码修改（lib/tableOps 纯函数） */
-function applyTableOp(view: EditorView, tableFrom: number, op: string): void {
-  const state = view.state
-  const tree = syntaxTree(state)
-  // side=1：pos 在节点边界（文档开头 0）时取 pos 之后的节点，避免命中根 Document
-  let node = tree.resolveInner(tableFrom, 1)
-  while (node.parent && node.name !== 'Table') node = node.parent
-  if (node.name !== 'Table') return
-
-  // 表格块行文本 + 范围
-  const lines: string[] = []
-  let lineNo = state.doc.lineAt(node.from).number
-  const lastLineNo = state.doc.lineAt(node.to).number
-  while (lineNo <= lastLineNo) {
-    lines.push(state.doc.line(lineNo).text)
-    lineNo += 1
-  }
-  const startPos = state.doc.lineAt(node.from).from
-  const endPos = state.doc.lineAt(node.to).to
-
-  // 删行目标：光标所在数据行；光标不在数据行则删最后一行
-  let result: string[] | null = null
-  if (op === 'addRow') result = addTableRow(lines)
-  else if (op === 'addCol') result = addTableCol(lines)
-  else if (op === 'delCol') result = removeTableCol(lines)
-  else if (op === 'delRow') {
-    const cursorLine = state.doc.lineAt(state.selection.main.head).number
-    const dataIndex = cursorLine - (state.doc.lineAt(node.from).number + 2)
-    const idx = dataIndex >= 0 && dataIndex < lines.length - 2 ? dataIndex : lines.length - 3
-    result = removeTableRow(lines, Math.max(0, idx))
-  }
-  if (!result) return
-
-  view.dispatch({
-    changes: { from: startPos, to: endPos, insert: result.join('\n') },
-    selection: { anchor: startPos },
-  })
-  view.focus()
-}
-
 /* ------------------------------------------------------------------ */
 /* 语法树 → 装饰（节点映射，design.md §4）                               */
 /* ------------------------------------------------------------------ */
@@ -501,6 +459,7 @@ function addRangeDecorations(
   from: number,
   to: number,
   cursorLine: number,
+  includeTables: boolean,
 ): void {
   const tree = syntaxTree(state)
   tree.iterate({
@@ -511,7 +470,7 @@ function addRangeDecorations(
       const { name } = node
       // Table 内部不递归（维持「单元格内不 scanInline」MVP 折中，② 再放开）
       if (name === 'Table') {
-        addTable(builder, state, node, cursorLine)
+        if (includeTables) addTable(builder, state, node)
         return false
       }
       if (isHeading(name)) {
@@ -520,7 +479,7 @@ function addRangeDecorations(
       }
       switch (name) {
         case 'FencedCode':
-          addFencedCode(builder, state, node)
+          addFencedCode(builder, state, node, cursorLine)
           return false
         case 'Emphasis':
           addEmphasisLike(builder, node, italicMark)
@@ -701,11 +660,16 @@ function addFencedCode(
   builder: RangeSetBuilder<Decoration>,
   state: EditorState,
   node: SyntaxNode,
+  cursorLine: number,
 ): void {
   const marks = collectChildren(node, 'CodeMark')
   if (marks.length === 0) return
+  const blockLineFrom = state.doc.lineAt(node.from).number
+  const blockLineTo = state.doc.lineAt(node.to).number
+  const isActive = cursorLine >= blockLineFrom && cursorLine <= blockLineTo
+  const fenceDecoration = isActive ? fenceMark : hiddenMark
   const open = marks[0]
-  builder.add(open.from, open.to, fenceMark)
+  builder.add(open.from, open.to, fenceDecoration)
   const info = node.getChild('CodeInfo')
   if (info) {
     // 语言选择器替换 CodeInfo（原生 select，选择后改写围栏源码）
@@ -716,39 +680,38 @@ function addFencedCode(
         widget: new LangPickerWidget(info.from, info.to, state.sliceDoc(info.from, info.to)),
       }),
     )
+  } else {
+    // 空 info 是零长度范围，replace widget 不会显示；用 point widget 提供可见语言选择器。
+    builder.add(
+      open.to,
+      open.to,
+      Decoration.widget({ widget: new LangPickerWidget(open.to, open.to, ''), side: 1 }),
+    )
   }
   const codeText = node.getChild('CodeText')
   if (codeText) builder.add(codeText.from, codeText.to, codeBlockMark)
   // 未闭合围栏（输入中间态）：无闭 CodeMark，只 add 开围栏（open == close 会重复 add 违规）
   if (marks.length > 1) {
     const close = marks[marks.length - 1]
-    builder.add(close.from, close.to, fenceMark)
+    builder.add(close.from, close.to, fenceDecoration)
   }
 }
 
-/** GFM 表格：表头行 head+first、分隔行 sep、数据行 row+last、分隔符 dim；不递归单元格 */
+/** headless smoke 用 GFM 表格轻量样式；运行时真实表格由 block widget 承载。 */
 function addTable(
   builder: RangeSetBuilder<Decoration>,
   state: EditorState,
   node: SyntaxNode,
-  cursorLine: number,
 ): void {
   const children: SyntaxNode[] = []
   for (let ch = node.firstChild; ch; ch = ch.nextSibling) children.push(ch)
   const rows = children.filter((c) => c.name === 'TableRow')
   const isLastRow = (n: SyntaxNode) => rows.length > 0 && rows[rows.length - 1] === n
-  // 光标所在表格：表头行行首加工具条（需求 11），仅一个表格显示
-  const tableLineFrom = state.doc.lineAt(node.from).number
-  const tableLineTo = state.doc.lineAt(node.to).number
-  const showToolbar = cursorLine >= tableLineFrom && cursorLine <= tableLineTo
 
   for (const ch of children) {
     if (ch.name === 'TableHeader') {
       const line = state.doc.lineAt(ch.from)
       const cls = ['sn-md-tbl', 'sn-md-tbl-head', 'sn-md-tbl-first'].join(' ')
-      if (showToolbar) {
-        builder.add(line.from, line.from, Decoration.widget({ widget: new TableToolbarWidget(node.from) }))
-      }
       builder.add(line.from, line.to, Decoration.mark({ class: cls }))
       addTableDelims(builder, ch)
     } else if (ch.name === 'TableDelimiter') {
@@ -800,10 +763,20 @@ function nextChildStart(node: SyntaxNode, after: SyntaxNode): number {
  * 全量构建装饰：遍历整棵语法树（lezer 解析器增量更新，遍历单遍 O(n)）。
  * 入参为 EditorState（无 DOM 依赖，可 headless 测试）。
  */
-export function buildDecorations(state: EditorState): DecorationSet {
+export function buildDecorations(
+  state: EditorState,
+  options: { includeTables?: boolean } = {},
+): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>()
   const cursorLine = state.doc.lineAt(state.selection.main.head).number
-  addRangeDecorations(builder, state, 0, state.doc.length, cursorLine)
+  addRangeDecorations(
+    builder,
+    state,
+    0,
+    state.doc.length,
+    cursorLine,
+    options.includeTables !== false,
+  )
   return builder.finish()
 }
 
@@ -822,7 +795,7 @@ const markdownDecorationPlugin = ViewPlugin.fromClass(
 
     constructor(view: EditorView) {
       this.cursorLine = cursorLineOf(view)
-      this.decorations = buildDecorations(view.state)
+      this.decorations = buildDecorations(view.state, { includeTables: false })
     }
 
     update(update: ViewUpdate): void {
@@ -831,7 +804,7 @@ const markdownDecorationPlugin = ViewPlugin.fromClass(
         try {
           // 全量重建（语法树遍历 0.14ms/5000 行）；DOM 增量由 CM6 compare 处理
           this.cursorLine = line
-          this.decorations = buildDecorations(update.view.state)
+          this.decorations = buildDecorations(update.view.state, { includeTables: false })
         } catch (err) {
           // 兜底：重建失败保留旧装饰（避免插件崩溃被 CM6 禁用 → 装饰全灭）
           console.error('[markdown-decorations] 重建失败，保留旧装饰：', err)

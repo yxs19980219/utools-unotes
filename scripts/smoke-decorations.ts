@@ -10,6 +10,7 @@ import { markdown } from '@codemirror/lang-markdown'
 import { GFM } from '@lezer/markdown'
 import type { Decoration, DecorationSet } from '@codemirror/view'
 import { buildDecorations } from '../src/components/Editor/markdownDecorations.ts'
+import { buildTableBlockDecorations } from '../src/components/Editor/markdownBlockWidgets.ts'
 
 /** 语法树驱动装饰依赖 language 扩展：state 需挂 markdown+GFM（与编辑器运行时一致） */
 const LANG_EXT = [markdown({ extensions: [GFM] })]
@@ -124,6 +125,18 @@ function main() {
       '[ ] 待办也有 Widget',
     )
     ok('列表：标记淡色 + [x]/[ ] 复选框 Widget')
+
+    const listTriggerDoc = '-项目\n- 项目\n1.项目\n1. 项目'
+    const listTriggerState = EditorState.create({
+      doc: listTriggerDoc,
+      selection: { anchor: 0 },
+      extensions: LANG_EXT,
+    })
+    const listTriggerItems = collect(buildDecorations(listTriggerState))
+    assert.equal(listTriggerItems.some((item) => item.widget?.constructor.name === 'BulletWidget'), true, '带空格无序列表生效')
+    assert.equal(listTriggerItems.some((item) => item.from === 0 && item.to === 2), false, '无空格无序标记不渲染')
+    assert.equal(listTriggerItems.some((item) => item.from === 8 && item.to === 12), false, '无空格有序标记不渲染')
+    ok('列表：输入标记后空格才触发列表渲染')
   }
 
   // 4. 引用：> 淡色 + 整行边框样式
@@ -143,15 +156,36 @@ function main() {
     ok('分隔线：--- 渲染为水平线')
   }
 
-  // 6. 围栏代码块：围栏行淡色 + 内部等宽背景
+  // 6. 围栏代码块：非编辑上下文隐藏围栏，代码内容保持等宽背景
   {
     const l14 = lineAt(15)
-    assert.equal(clsAt(items, l14.from).includes('sn-md-fence'), true, '开围栏行淡色')
+    assert.equal(clsAt(items, l14.from).includes('sn-md-hidden'), true, '非编辑态开围栏隐藏')
     const l15 = lineAt(16)
     assert.equal(clsAt(items, l15.from).includes('sn-md-codeblock'), true, '代码内容行样式')
     const l16 = lineAt(17)
-    assert.equal(clsAt(items, l16.from).includes('sn-md-fence'), true, '闭围栏行淡色')
-    ok('代码块：围栏行淡色 + 内容行等宽背景')
+    assert.equal(clsAt(items, l16.from).includes('sn-md-hidden'), true, '非编辑态闭围栏隐藏')
+
+    const activeCodeState = EditorState.create({
+      doc,
+      selection: { anchor: l15.from + 2 },
+      extensions: LANG_EXT,
+    })
+    const activeCodeItems = collect(buildDecorations(activeCodeState))
+    assert.equal(clsAt(activeCodeItems, l14.from).includes('sn-md-fence'), true, '编辑代码块时显示开围栏')
+    assert.equal(clsAt(activeCodeItems, l16.from).includes('sn-md-fence'), true, '编辑代码块时显示闭围栏')
+
+    const noLangState = EditorState.create({
+      doc: '```\n代码\n```',
+      selection: { anchor: 0 },
+      extensions: LANG_EXT,
+    })
+    const noLangItems = collect(buildDecorations(noLangState))
+    assert.equal(
+      noLangItems.some((item) => item.widget?.constructor.name === 'LangPickerWidget'),
+      true,
+      '无语言围栏也显示 point language picker',
+    )
+    ok('代码块：非编辑态隐藏围栏 / 编辑态显示 + 内容等宽背景 + 空语言选择器')
   }
 
   // 7. 光标移到非标题行：所有标题标记隐藏（光标行机制重算）
@@ -213,6 +247,14 @@ function main() {
     const boldPos = t(4).from + boldRow.indexOf('**值4**') + 2
     assert.equal(clsAt(items3, boldPos).includes('sn-md-bold'), false, '单元格内不做行内扫描')
     ok('表格：表头加粗/边框/分隔符淡色（R10）')
+
+    const blockSet = buildTableBlockDecorations(state3)
+    const blockItems = collect(blockSet)
+    assert.equal(blockItems.length, 1, '完整表格只生成一个 block decoration')
+    assert.equal(blockItems[0].from, 0)
+    assert.equal(blockItems[0].to, tableDoc.length)
+    assert.equal(blockItems[0].widget?.constructor.name, 'TableWidget')
+    ok('表格：StateField block widget 覆盖完整源码范围')
   }
 
   // 9. 嵌套列表（需求 13/14）：符号随深度变化 •/◦/▪ + 缩进 spacer 随深度递增
