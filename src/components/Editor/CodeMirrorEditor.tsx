@@ -21,6 +21,7 @@ import type { BasicSetupOptions } from '@uiw/codemirror-extensions-basic-setup'
 import { markdown } from '@codemirror/lang-markdown'
 import { GFM } from '@lezer/markdown'
 import { keymap, EditorView } from '@codemirror/view'
+import { syntaxTree } from '@codemirror/language'
 
 import { cn } from '@/lib/utils'
 import {
@@ -98,12 +99,33 @@ const CodeMirrorEditor = memo(
 
           if (opts.block) {
             // 多行块（代码块/公式块/表格/分割线）：光标处插入，光标落在内容起点/末尾。
-            // 光标不在行首时补换行：围栏/表格必须行首独立成块（否则解析失败）
-            const lead = head > line.from ? '\n' : ''
+            // 光标不在行首时补换行（围栏/表格必须行首独立成块）。
+            // 列表项内插入：额外空行退出列表（否则 ```/表格 成为列表项内容不解析）。
+            // 围栏内容区内插入：落到围栏结束后（否则表格/代码块进入代码内容不渲染）。
+            let insertPos = head
+            let lead = head > line.from ? '\n' : ''
+            if (/^\s*(?:[-*+]|\d+[.)])\s/.test(lineText)) lead += '\n'
+            const tree = syntaxTree(view.state)
+            let node = tree.resolveInner(head, 1)
+            while (node.parent && node.name !== 'FencedCode') node = node.parent
+            if (node.name === 'FencedCode') {
+              const marks = node.getChildren('CodeMark')
+              const contentFrom = marks[0]?.to ?? node.from
+              const contentTo = marks.length > 1 ? marks[marks.length - 1].from : node.to
+              // 光标在内容区或闭围栏行（开围栏行除外）→ 插到围栏结束（行号判断，覆盖边界）
+              const openLine = view.state.doc.lineAt(Math.min(contentFrom, view.state.doc.length)).number
+              const closeLine = view.state.doc.lineAt(Math.min(contentTo, view.state.doc.length)).number
+              const cursorLine = view.state.doc.lineAt(head).number
+              if (cursorLine > openLine && cursorLine <= closeLine) {
+                insertPos = node.to
+                lead = '\n\n'
+              }
+            }
             const text = lead + (suffix ? `${prefix}\n${suffix}\n` : prefix)
-            const caret = head + lead.length + (suffix ? prefix.length + 1 : text.length)
+            // caret：suffix 有 → 落在 prefix 内容起点后；无 → 文本末尾（text 已含 lead，勿重复加）
+            const caret = insertPos + (suffix ? lead.length + prefix.length + 1 : text.length)
             view.dispatch({
-              changes: { from: head, to: head, insert: text },
+              changes: { from: insertPos, to: insertPos, insert: text },
               selection: { anchor: caret },
             })
             view.focus()

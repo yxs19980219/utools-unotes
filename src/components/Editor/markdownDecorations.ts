@@ -705,7 +705,6 @@ function addFencedCode(
   const marks = collectChildren(node, 'CodeMark')
   if (marks.length === 0) return
   const open = marks[0]
-  const close = marks[marks.length - 1]
   builder.add(open.from, open.to, fenceMark)
   const info = node.getChild('CodeInfo')
   if (info) {
@@ -720,7 +719,11 @@ function addFencedCode(
   }
   const codeText = node.getChild('CodeText')
   if (codeText) builder.add(codeText.from, codeText.to, codeBlockMark)
-  builder.add(close.from, close.to, fenceMark)
+  // 未闭合围栏（输入中间态）：无闭 CodeMark，只 add 开围栏（open == close 会重复 add 违规）
+  if (marks.length > 1) {
+    const close = marks[marks.length - 1]
+    builder.add(close.from, close.to, fenceMark)
+  }
 }
 
 /** GFM 表格：表头行 head+first、分隔行 sep、数据行 row+last、分隔符 dim；不递归单元格 */
@@ -825,9 +828,14 @@ const markdownDecorationPlugin = ViewPlugin.fromClass(
     update(update: ViewUpdate): void {
       const line = cursorLineOf(update.view)
       if (update.docChanged || line !== this.cursorLine) {
-        // 全量重建（语法树遍历 0.14ms/5000 行）；DOM 增量由 CM6 compare 处理
-        this.cursorLine = line
-        this.decorations = buildDecorations(update.view.state)
+        try {
+          // 全量重建（语法树遍历 0.14ms/5000 行）；DOM 增量由 CM6 compare 处理
+          this.cursorLine = line
+          this.decorations = buildDecorations(update.view.state)
+        } catch (err) {
+          // 兜底：重建失败保留旧装饰（避免插件崩溃被 CM6 禁用 → 装饰全灭）
+          console.error('[markdown-decorations] 重建失败，保留旧装饰：', err)
+        }
       }
     }
   },
