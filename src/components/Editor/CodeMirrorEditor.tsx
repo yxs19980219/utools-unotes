@@ -47,6 +47,8 @@ export interface MarkdownInsertApi {
    * block=true 时在光标处插入多行块（prefix\\nsuffix），光标居中
    */
   block(prefix: string, suffix?: string, opts?: { block?: boolean; placeholder?: string }): void
+  /** 插入图片语法 `![文件名](路径)`，光标落在末尾（路径中 () 已转义） */
+  insertImage(path: string): void
   /** 跳转定位：滚动到文档偏移并移动光标（元信息面板大纲跳转用） */
   jumpTo(pos: number): void
   focus(): void
@@ -95,9 +97,11 @@ const CodeMirrorEditor = memo(
           const lineText = view.state.sliceDoc(line.from, line.to)
 
           if (opts.block) {
-            // 多行块（代码块/公式块/表格/分割线）：光标处插入，光标落在内容起点/末尾
-            const text = suffix ? `${prefix}\n${suffix}\n` : prefix
-            const caret = suffix ? head + prefix.length + 1 : head + text.length
+            // 多行块（代码块/公式块/表格/分割线）：光标处插入，光标落在内容起点/末尾。
+            // 光标不在行首时补换行：围栏/表格必须行首独立成块（否则解析失败）
+            const lead = head > line.from ? '\n' : ''
+            const text = lead + (suffix ? `${prefix}\n${suffix}\n` : prefix)
+            const caret = head + lead.length + (suffix ? prefix.length + 1 : text.length)
             view.dispatch({
               changes: { from: head, to: head, insert: text },
               selection: { anchor: caret },
@@ -134,6 +138,20 @@ const CodeMirrorEditor = memo(
           } else {
             insert(prefix, prefix.length)
           }
+          view.focus()
+        },
+        insertImage(path) {
+          const view = getView()
+          if (!view) return
+          const { head } = view.state.selection.main
+          const alt = path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') ?? '图片'
+          // 路径中 () 需转义（markdown 链接语法冲突），空格/中文 GFM 直接可用
+          const safePath = path.replace(/\(/g, '%28').replace(/\)/g, '%29')
+          const text = `![${alt}](${safePath})`
+          view.dispatch({
+            changes: { from: head, to: head, insert: text },
+            selection: { anchor: head + text.length },
+          })
           view.focus()
         },
         jumpTo(pos) {

@@ -215,6 +215,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
 const EMPTY_API: MarkdownInsertApi = {
   wrap: () => {},
   block: () => {},
+  insertImage: () => {},
   jumpTo: () => {},
   focus: () => {},
 }

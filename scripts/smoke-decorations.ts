@@ -245,6 +245,22 @@ function main() {
     ok('嵌套列表：符号深度 1/2/3/4 + 缩进 spacer 深度 1/2/3（需求 13/14）')
   }
 
+  // 10. 图片（需求 9）：完整 Image 节点 → img widget 替换；半成品回退链接样式
+  {
+    const imgDoc = '![示例图](https://a.b/c.png) 与 ![半成品]('
+    const state5 = EditorState.create({ doc: imgDoc, selection: { anchor: 0 }, extensions: LANG_EXT })
+    const set5 = buildDecorations(state5)
+    const items5 = collect(set5)
+    const imgWidget = items5.find((i) => i.widget !== null)
+    assert.ok(imgWidget, '完整图片有 widget')
+    assert.equal(imgWidget.widget?.constructor.name, 'ImageWidget', 'widget 类型')
+    assert.equal(imgWidget.from, 0, '替换整个图片语法')
+    // 半成品（无 URL）：无 widget，按链接样式（LinkMark dim）
+    const halfItems = items5.filter((i) => i.widget !== null)
+    assert.equal(halfItems.length, 1, '半成品图片不渲染 widget')
+    ok('图片：完整语法 → ImageWidget 替换 / 半成品回退（需求 9）')
+  }
+
   console.log(`\n全部通过：${passed} 项断言`)
 }
 

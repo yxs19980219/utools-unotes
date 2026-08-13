@@ -45,6 +45,38 @@ interface ToolDef {
 /** 行首标记类工具（标题/列表/引用/勾选） */
 const lineTools = (prefix: string): ToolDef['run'] => (api) => api.block(prefix)
 
+/**
+ * 图片选择：uTools 环境走 showOpenDialog；浏览器环境（dev/headless）降级 input[type=file]
+ * （f.path 为 Electron 扩展，普通浏览器用 blob URL 保证图片可显示）
+ */
+function pickImageFile(cb: (path: string) => void): void {
+  const utoolsApi = (globalThis as { utools?: { showOpenDialog?: (o: object) => string[] | undefined } }).utools
+  if (utoolsApi?.showOpenDialog) {
+    const files = utoolsApi.showOpenDialog({
+      title: '选择图片',
+      filters: [
+        {
+          name: '图片',
+          extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'],
+        },
+      ],
+      properties: ['openFile'],
+    })
+    if (files && files.length > 0) cb(files[0])
+    return
+  }
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.onchange = () => {
+    const f = input.files?.[0]
+    if (!f) return
+    const path = (f as { path?: string }).path ?? URL.createObjectURL(f)
+    cb(path)
+  }
+  input.click()
+}
+
 const TOOLS: ToolDef[] = [
   // ---- 行内 wrap ----
   { id: 'bold', label: '加粗', icon: Bold, run: (a) => a.wrap('**', '**', '加粗文本') },
@@ -55,7 +87,7 @@ const TOOLS: ToolDef[] = [
   { id: 'inline-code', label: '内联代码', icon: Code, run: (a) => a.wrap('`', '`', 'code') },
   { id: 'inline-math', label: '内联公式', icon: Sigma, run: (a) => a.wrap('$', '$', '公式') },
   { id: 'link', label: '链接', icon: Link, run: (a) => a.wrap('[', '](url)', '链接文字') },
-  { id: 'image', label: '图片', icon: Image, run: (a) => a.wrap('![', '](url)', '图片描述') },
+  { id: 'image', label: '图片', icon: Image, run: (a) => pickImageFile((p) => a.insertImage(p)) },
   // ---- 行级 ----
   { id: 'h1', label: '一级标题', icon: Heading1, run: lineTools('# ') },
   { id: 'h2', label: '二级标题', icon: Heading2, run: lineTools('## ') },
@@ -65,7 +97,7 @@ const TOOLS: ToolDef[] = [
   { id: 'task', label: '勾选框', icon: SquareCheck, run: lineTools('- [ ] ') },
   { id: 'quote', label: '引用', icon: Quote, run: lineTools('> ') },
   // ---- 块级 ----
-  { id: 'codeblock', label: '代码块', icon: CodeXml, run: (a) => a.block('```', '```', { block: true }) },
+  { id: 'codeblock', label: '代码块', icon: CodeXml, run: (a) => a.block('```ts', '```', { block: true }) },
   { id: 'mathblock', label: '公式块', icon: Calculator, run: (a) => a.block('$$', '$$', { block: true }) },
   {
     id: 'table',

@@ -28,6 +28,7 @@ import {
 } from '@codemirror/view'
 import { syntaxTree } from '@codemirror/language'
 import type { SyntaxNode } from '@lezer/common'
+import { addTableCol, addTableRow, removeTableCol, removeTableRow } from '../../lib/tableOps.ts'
 
 /* ------------------------------------------------------------------ */
 /* 编辑器主题（chrome + 装饰类样式）：全部语义色                          */
@@ -138,6 +139,55 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   '.sn-li-indent': {
     display: 'inline-block',
     width: '1em',
+  },
+  /* 图片（需求 9）：缩放不溢出，圆角边框；失败时底色衬托原生 alt 文本 */
+  '.sn-image': {
+    maxWidth: '100%',
+    maxHeight: '240px',
+    objectFit: 'contain',
+    borderRadius: '4px',
+    verticalAlign: 'middle',
+    cursor: 'default',
+    backgroundColor: 'color-mix(in oklab, var(--muted) 60%, transparent)',
+  },
+  /* 表格工具条（需求 11）：光标所在表格的表头行首悬浮按钮组 */
+  '.sn-table-toolbar': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '2px',
+    marginRight: '6px',
+    borderRadius: '4px',
+    backgroundColor: 'var(--muted)',
+    padding: '0 2px',
+    verticalAlign: 'middle',
+  },
+  '.sn-table-toolbar button': {
+    border: 'none',
+    background: 'transparent',
+    color: 'var(--muted-foreground)',
+    fontSize: '0.7rem',
+    lineHeight: '1.2',
+    padding: '1px 3px',
+    borderRadius: '3px',
+    cursor: 'pointer',
+  },
+  '.sn-table-toolbar button:hover': {
+    backgroundColor: 'var(--accent)',
+    color: 'var(--foreground)',
+  },
+  /* 代码块语言选择器（需求 10）：围栏行内原生 select，淡色小字 */
+  '.sn-lang-picker': {
+    fontSize: '0.72rem',
+    color: 'var(--muted-foreground)',
+    backgroundColor: 'transparent',
+    border: 'none',
+    outline: 'none',
+    cursor: 'pointer',
+    opacity: '0.9',
+    maxWidth: '8em',
+  },
+  '.sn-lang-picker:hover': {
+    opacity: '1',
   },
   /* GFM 表格（R10）：整表细边框 + muted 背景；表头行加粗 + 下边框 */
   '.sn-md-tbl': {
@@ -258,6 +308,180 @@ class ListIndentWidget extends WidgetType {
   }
 }
 
+/** 图片（需求 9）：替换 ![alt](src) 为 <img>；加载失败降级占位 */
+class ImageWidget extends WidgetType {
+  readonly src: string
+  readonly alt: string
+
+  constructor(src: string, alt: string) {
+    super()
+    this.src = src
+    this.alt = alt
+  }
+
+  eq(other: ImageWidget): boolean {
+    return other.src === this.src && other.alt === this.alt
+  }
+
+  ignoreEvent(): boolean {
+    return true
+  }
+
+  toDOM(): HTMLElement {
+    const img = document.createElement('img')
+    img.className = 'sn-image'
+    img.src = this.src
+    img.alt = this.alt
+    img.draggable = false
+    // 注意：禁止在 onerror 里改 DOM（CM6 全量监听 contentDOM 变更并回写文档，
+    // 实测插入占位节点会污染源码）。加载失败时浏览器原生显示 alt 文本 + broken 图标。
+    return img
+  }
+}
+
+/** 常见代码块语言（需求 10）：语言选择器选项 + 工具栏默认 ```ts */
+export const COMMON_CODE_LANGS = [
+  'ts', 'js', 'python', 'java', 'c', 'cpp', 'go', 'rust',
+  'sql', 'html', 'css', 'json', 'bash', 'md', 'yaml',
+] as const
+
+/** 代码块语言选择器（需求 10）：替换 CodeInfo 为原生 select，选择后改写围栏源码 */
+class LangPickerWidget extends WidgetType {
+  /** CodeInfo 节点范围（装饰生成时快照；点击时文档未变则仍准确） */
+  readonly infoFrom: number
+  readonly infoTo: number
+  readonly current: string
+
+  constructor(infoFrom: number, infoTo: number, current: string) {
+    super()
+    this.infoFrom = infoFrom
+    this.infoTo = infoTo
+    this.current = current
+  }
+
+  eq(other: LangPickerWidget): boolean {
+    return other.infoFrom === this.infoFrom && other.current === this.current
+  }
+
+  ignoreEvent(): boolean {
+    return true
+  }
+
+  toDOM(): HTMLElement {
+    const sel = document.createElement('select')
+    sel.className = 'sn-lang-picker'
+    sel.setAttribute('aria-label', '代码块语言')
+    // 无语言选项（选后移除 CodeInfo）
+    const none = document.createElement('option')
+    none.value = ''
+    none.textContent = '语言'
+    sel.appendChild(none)
+    for (const lang of COMMON_CODE_LANGS) {
+      const opt = document.createElement('option')
+      opt.value = lang
+      opt.textContent = lang
+      sel.appendChild(opt)
+    }
+    sel.value = this.current
+    sel.addEventListener('change', () => {
+      const view = EditorView.findFromDOM(sel)
+      if (!view) return
+      const lang = sel.value
+      view.dispatch({
+        changes: { from: this.infoFrom, to: this.infoTo, insert: lang },
+        selection: { anchor: this.infoFrom + lang.length },
+      })
+      view.focus()
+    })
+    return sel
+  }
+}
+
+/** 表格工具条（需求 11）：光标所在表格的表头行首按钮组（增删行列） */
+class TableToolbarWidget extends WidgetType {
+  /** 表头行行首位置（装饰生成时快照；点击时文档未变则仍准确，变化后装饰已重建） */
+  readonly tableFrom: number
+
+  constructor(tableFrom: number) {
+    super()
+    this.tableFrom = tableFrom
+  }
+
+  eq(other: TableToolbarWidget): boolean {
+    return other.tableFrom === this.tableFrom
+  }
+
+  ignoreEvent(): boolean {
+    return true
+  }
+
+  toDOM(): HTMLElement {
+    const bar = document.createElement('span')
+    bar.className = 'sn-table-toolbar'
+    bar.setAttribute('role', 'toolbar')
+    bar.setAttribute('aria-label', '表格操作')
+    const ops: [string, string][] = [
+      ['addRow', '＋行'],
+      ['delRow', '－行'],
+      ['addCol', '＋列'],
+      ['delCol', '－列'],
+    ]
+    for (const [op, label] of ops) {
+      const btn = document.createElement('button')
+      btn.type = 'button'
+      btn.dataset.op = op
+      btn.textContent = label
+      btn.setAttribute('aria-label', label)
+      btn.addEventListener('click', () => {
+        const view = EditorView.findFromDOM(bar)
+        if (view) applyTableOp(view, this.tableFrom, op)
+      })
+      bar.appendChild(btn)
+    }
+    return bar
+  }
+}
+
+/** 表格增删行列：定位光标所在表格块 → 行级源码修改（lib/tableOps 纯函数） */
+function applyTableOp(view: EditorView, tableFrom: number, op: string): void {
+  const state = view.state
+  const tree = syntaxTree(state)
+  // side=1：pos 在节点边界（文档开头 0）时取 pos 之后的节点，避免命中根 Document
+  let node = tree.resolveInner(tableFrom, 1)
+  while (node.parent && node.name !== 'Table') node = node.parent
+  if (node.name !== 'Table') return
+
+  // 表格块行文本 + 范围
+  const lines: string[] = []
+  let lineNo = state.doc.lineAt(node.from).number
+  const lastLineNo = state.doc.lineAt(node.to).number
+  while (lineNo <= lastLineNo) {
+    lines.push(state.doc.line(lineNo).text)
+    lineNo += 1
+  }
+  const startPos = state.doc.lineAt(node.from).from
+  const endPos = state.doc.lineAt(node.to).to
+
+  // 删行目标：光标所在数据行；光标不在数据行则删最后一行
+  let result: string[] | null = null
+  if (op === 'addRow') result = addTableRow(lines)
+  else if (op === 'addCol') result = addTableCol(lines)
+  else if (op === 'delCol') result = removeTableCol(lines)
+  else if (op === 'delRow') {
+    const cursorLine = state.doc.lineAt(state.selection.main.head).number
+    const dataIndex = cursorLine - (state.doc.lineAt(node.from).number + 2)
+    const idx = dataIndex >= 0 && dataIndex < lines.length - 2 ? dataIndex : lines.length - 3
+    result = removeTableRow(lines, Math.max(0, idx))
+  }
+  if (!result) return
+
+  view.dispatch({
+    changes: { from: startPos, to: endPos, insert: result.join('\n') },
+    selection: { anchor: startPos },
+  })
+  view.focus()
+}
+
 /* ------------------------------------------------------------------ */
 /* 语法树 → 装饰（节点映射，design.md §4）                               */
 /* ------------------------------------------------------------------ */
@@ -287,7 +511,7 @@ function addRangeDecorations(
       const { name } = node
       // Table 内部不递归（维持「单元格内不 scanInline」MVP 折中，② 再放开）
       if (name === 'Table') {
-        addTable(builder, state, node)
+        addTable(builder, state, node, cursorLine)
         return false
       }
       if (isHeading(name)) {
@@ -296,7 +520,7 @@ function addRangeDecorations(
       }
       switch (name) {
         case 'FencedCode':
-          addFencedCode(builder, node)
+          addFencedCode(builder, state, node)
           return false
         case 'Emphasis':
           addEmphasisLike(builder, node, italicMark)
@@ -308,9 +532,25 @@ function addRangeDecorations(
           addInlineCode(builder, node)
           return false
         case 'Link':
-        case 'Image':
           addLink(builder, node)
           return true
+        case 'Image': {
+          // 完整图片语法（含 URL）→ 图片 widget（需求 9）；半成品回退链接样式
+          const urlNode = node.getChild('URL')
+          if (urlNode) {
+            const marks = collectChildren(node, 'LinkMark')
+            const altStart = marks[0] ? marks[0].to : node.from
+            const altEnd = marks[1] ? marks[1].from : urlNode.from
+            builder.add(
+              node.from,
+              node.to,
+              Decoration.replace({ widget: new ImageWidget(state.sliceDoc(urlNode.from, urlNode.to), state.sliceDoc(altStart, altEnd)) }),
+            )
+            return false
+          }
+          addLink(builder, node)
+          return true
+        }
         case 'ListItem':
           addListItem(builder, state, node)
           return true
@@ -456,15 +696,30 @@ function addBlockquote(
   }
 }
 
-/** 围栏代码块：开/闭 CodeMark（+CodeInfo）fenceMark，CodeText 内容 codeBlockMark */
-function addFencedCode(builder: RangeSetBuilder<Decoration>, node: SyntaxNode): void {
+/** 围栏代码块（需求 10）：按位置顺序 add —— 开 CodeMark → CodeInfo(语言选择器) → CodeText → 闭 CodeMark */
+function addFencedCode(
+  builder: RangeSetBuilder<Decoration>,
+  state: EditorState,
+  node: SyntaxNode,
+): void {
   const marks = collectChildren(node, 'CodeMark')
   if (marks.length === 0) return
   const open = marks[0]
   const close = marks[marks.length - 1]
+  builder.add(open.from, open.to, fenceMark)
   const info = node.getChild('CodeInfo')
-  builder.add(open.from, info ? info.to : open.to, fenceMark)
-  if (close.from > open.to) builder.add(open.to, close.from, codeBlockMark)
+  if (info) {
+    // 语言选择器替换 CodeInfo（原生 select，选择后改写围栏源码）
+    builder.add(
+      info.from,
+      info.to,
+      Decoration.replace({
+        widget: new LangPickerWidget(info.from, info.to, state.sliceDoc(info.from, info.to)),
+      }),
+    )
+  }
+  const codeText = node.getChild('CodeText')
+  if (codeText) builder.add(codeText.from, codeText.to, codeBlockMark)
   builder.add(close.from, close.to, fenceMark)
 }
 
@@ -473,16 +728,24 @@ function addTable(
   builder: RangeSetBuilder<Decoration>,
   state: EditorState,
   node: SyntaxNode,
+  cursorLine: number,
 ): void {
   const children: SyntaxNode[] = []
   for (let ch = node.firstChild; ch; ch = ch.nextSibling) children.push(ch)
   const rows = children.filter((c) => c.name === 'TableRow')
   const isLastRow = (n: SyntaxNode) => rows.length > 0 && rows[rows.length - 1] === n
+  // 光标所在表格：表头行行首加工具条（需求 11），仅一个表格显示
+  const tableLineFrom = state.doc.lineAt(node.from).number
+  const tableLineTo = state.doc.lineAt(node.to).number
+  const showToolbar = cursorLine >= tableLineFrom && cursorLine <= tableLineTo
 
   for (const ch of children) {
     if (ch.name === 'TableHeader') {
       const line = state.doc.lineAt(ch.from)
       const cls = ['sn-md-tbl', 'sn-md-tbl-head', 'sn-md-tbl-first'].join(' ')
+      if (showToolbar) {
+        builder.add(line.from, line.from, Decoration.widget({ widget: new TableToolbarWidget(node.from) }))
+      }
       builder.add(line.from, line.to, Decoration.mark({ class: cls }))
       addTableDelims(builder, ch)
     } else if (ch.name === 'TableDelimiter') {
