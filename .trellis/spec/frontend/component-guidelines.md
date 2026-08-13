@@ -82,6 +82,13 @@
 
 **性能基准**：`node scripts/bench-decorations.ts`（5000 行阈值 <10ms）与 `DOC_LINES=5000 node scripts/perf-input.mjs`（真实浏览器端到端/长任务检测）是后续 child 回归对比的固定工具。
 
+**Widget 三原则（08-13-wysiwyg-toolbar 实测）**：
+- **widget 内禁止改 DOM**：CM6 全量监听 contentDOM（childList+characterData+attributes），widget 内插入/修改节点会被 MutationObserver 同步回写文档源码（实测 onerror 插入占位 → 「无法加载」污染 doc）。失败态用 CSS + 原生 alt 显示
+- **resolveInner 文档开头边界**：`resolveInner(0, 0)` 返回根 Document；必须 `resolveInner(pos, 1)`（side=1 取 pos 之后节点）
+- **widget 交互取 view**：`EditorView.findFromDOM(widgetDom)`；widget 构造参数存位置快照（每次装饰重建刷新，点击瞬间即当前值）
+
+**装饰 add 顺序**（RangeSetBuilder）：from 必须严格非递减，重叠 range 走 nextLayer（同 from 时 startSide 必须非递减，replace -2 < mark -1）——FencedCode 等复合节点按位置顺序逐段 add（CodeMark → CodeInfo → CodeText → CodeMark），禁止整段覆盖后叠加子区域。
+
 ---
 
 ## Common Mistakes
@@ -92,6 +99,7 @@
 - **每卡自建投影 Map**：`NoteCardList.tsx:67` 的 `tagById` 在列表级构建一次传给卡片，禁止每张卡内 `tags.find()`（O(N²)）
 - **复制列表形态**：AC3 要求 1 条与 20 条渲染一致，新增列表场景必须先问"能否复用 NoteCardList"，禁止另写一套卡片
 - **装饰增量重建（08-13 实测回退）**：不要手工做「变化行局部重建 + 旧装饰 map 复用」——RangeSetBuilder 对重叠 range 分层存储（nextLayer），`between` 复制时主层与 nextLayer 分开回调导致 from 逆序，抛 `Ranges must be added sorted by from and startSide`；且实测 CM6 compare 本就只 diff 变化部分，增量无端到端收益。全量重建（语法树 0.14ms/5000 行）就是最优解
+- **widget 内改 DOM（08-13 实测）**：ImageWidget onerror 插入占位节点 → CM6 MutationObserver 把占位文本回写文档源码（doc 被污染）。任何 widget DOM 变更都危险；失败态用 CSS/原生 alt
 - **headless 测装饰不挂 language 扩展**：`syntaxTree(state)` 依赖 state 里的 language 扩展，`EditorState.create` 裸建（无 `markdown({extensions:[GFM]})`）时语法树为空 → 装饰空。smoke/bench 的 state 必须带 LANG_EXT
 - **裸色值/硬编码圆角字号**：一律走语义 Token 与 tailwind 标准 spacing/radius；装饰器样式只进 `markdownEditorTheme`
 - **弹窗承载表单**：800×600 下弹窗空间不足，新建对象/笔记表单是**全内容区替换**（`ContentArea.tsx:129-131` 编辑态优先），Dialog 只用于确认与短表单（标签别名编辑）
