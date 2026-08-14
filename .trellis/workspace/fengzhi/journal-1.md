@@ -77,3 +77,33 @@
 ### Status
 
 [OK] **Completed**
+
+---
+
+## Session 3: 编辑器换型 CM6 即时渲染（Obsidian 式，重新调研）
+
+**Task**: 08-14-editor-cm6-research
+
+**背景**：用户反馈 Milkdown (CrepeBuilder) 体验差（输入卡顿/源码被改写/观感不简洁/难定制），
+要求换 CM6 + 自研，对标 Obsidian Live Preview。经重新调研拍板：atomic-editor 0.6.2 低层组合
++ 自研 KaTeX 公式 + 从零重建（不复用旧 AtomicEditor）。
+
+**关键决策与实现**：
+- 根因：Milkdown/ProseMirror 文档=AST（星号被吃掉）；CM6 文档=源码字符串，装饰只改视图
+- 低层组合自组 EditorView（组件句柄不暴露 view，MarkdownInsertApi 需 dispatch）
+- 受控语义：ContentArea 给 NoteView 加 key={activeNoteId} 重挂载（删 draft 重置 effect）
+- mathExtension（StateField + 语法树 + KaTeX）：标准 $/$$；block widget 不替换换行符
+- underlineExtension（ViewPlugin）：<u> 标签隐藏 + mark 下划线；==高亮== 由 atomic 内置
+
+**踩坑（调试发现）**：
+- block widget replace 含换行 → Enter 后 selection 丢失，输入窜到文档开头（去 to+1 修复）
+- CM6 markdown 续行：> / - 后 Enter 自动续行标记，测试用 Backspace 退出引用
+- CM6 虚拟化渲染：.cm-line 仅可视行，长文档断言不能数 DOM 行数
+- atomic 非光标行隐藏转义符（\$ 的 \ 隐藏），边界断言走 store 源码
+
+**验证**：ui-smoke 50/50、smoke:editor 32/32、数据层 smoke 全过、typecheck/build 绿、
+dist 解压 1.68 MB（≤5MB）
+
+### Status
+
+[OK] **Completed**（待提交）

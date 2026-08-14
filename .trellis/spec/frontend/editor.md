@@ -1,103 +1,115 @@
-# Editor Architecture (Milkdown 7.22.1 / CrepeBuilder 即时渲染)
+# Editor Architecture (CM6 + atomic-editor 0.6.2 即时渲染)
 
-> 编辑器实现契约与历史：Milkdown 曾两次尝试——
-> ① Crepe 完整框架（79a0425，含默认 BlockEdit 块手柄）→ 用户否决「块编辑体验」回滚（94cbfec）；
-> ② 本次（08-14-milkdown-editor-migration，d9dfb6d）用 CrepeBuilder 只装配所需 feature，
-> 明确排除 block-edit/slash/拖拽，满足「纯 markdown 编辑交互 + 即时渲染」。
+> 编辑器实现契约与历史：历经 ① 自研 CM6 装饰系统 → ② Milkdown Crepe（否决，块编辑）→
+> ③ CM6/atomic-editor 组件态 → ④ Milkdown CrepeBuilder（本次换型前）→ ⑤ 本实现
+> （08-14-editor-cm6-research）：CM6 内核 + atomic-editor 拆散扩展 + 自研公式/下划线。
+> 根因：Milkdown 基于 ProseMirror（文档=AST，`**bold**` 星号被吃掉），CM6 文档=源码字符串，
+> 装饰只改视图 → 字节级 round-trip + 简洁 Obsidian 式体验。
 
 ## Architecture Overview
 
 ```
-NoteView —— 双向链路：onChange(md) → draft → 500ms 防抖 → updateNote；
-  ├── MarkdownToolbar（20 项）→ MarkdownInsertApi（markdownInsertApi 实现，ProseMirror 命令）
-  ├── MetaInfoPanel → 大纲 onJump(OutlineItem)（level+text 匹配标题，非源码偏移）
-  └── MilkdownEditor（CrepeBuilder 装配）：
-       ├── codeMirror feature：代码块（复用 @codemirror/lang-*，CM6 内核）
-       ├── latex feature：$…$/$$…$$ 公式（KaTeX 预览；$$ → code_block lang=LaTeX）
-       ├── placeholder feature + listItem feature（勾选框渲染 + 点击 toggle）
-       ├── 自研 customMarks：==高亮== / <u>下划线</u>（remark 转换 + mark schema + 序列化）
-       ├── 只读：setReadonly（editable=false，勾选框/表格天然不可交互）
-       └── 受控：documentId 变化重建（父组件 key + effect 双保险）
+NoteView —— 双向链路：onChange(md) → draft → 500ms 防抖 → updateNote（key 重挂载）
+  ├── MarkdownToolbar（20 项）→ MarkdownInsertApi（CM6 源码偏移命令）
+  ├── MetaInfoPanel → 大纲 onJump(OutlineItem)（item.offset 定位）
+  └── AtomicEditor（自组 EditorView，低层组合）：
+       ├── atomic-editor 拆散扩展：inlinePreview / tables / imageBlocks /
+       │   highlightMarkdown / atomicEditorTheme / atomicMarkdownSyntax /
+       │   autoCloseCodeFence / extendEmphasisPair / startAsteriskList
+       ├── 自研 mathExtension：$…$ / $$…$$ 公式（KaTeX，StateField 装饰）
+       ├── 自研 underlineExtension：<u>下划线</u>（ViewPlugin，标签隐藏 + mark）
+       ├── readOnlyExtension（Compartment 动态切换，归档只读）
+       └── Mod-s keymap（Prec.high）+ placeholder + CM6 内置（history/search/closeBrackets）
 ```
 
-- 文档模型 = ProseMirror（WYSIWYG），序列化 roundtrip 有语法规范化（如 `$$` 块 → ```latex
-  围栏、列表标记 `-`→`*`、分割线 `---`→`***`），内容不丢（AC 以内容保留为准）
+- 文档模型 = 纯 Markdown 源码（CM6 EditorState.doc）；装饰 view-only，round-trip 字节级一致
 - 无块编辑形态：无 slash / 无 block-edit 手柄 / 无拖拽（R11 硬约束）
-- 输入规则驱动解析：`# `、`- `、`> `、`---`、`$x$`、`[ ] ` 等逐键触发
-  （整段 insertText/粘贴纯文本不触发 input rules → 按源码显示）
+- ==高亮== 由 atomic-editor 内置；`<u>` 下划线自研（atomic 不支持）
+- 只读态：readOnlyExtension（EditorView.editable=false + EditorState.readOnly + `.cm-atomic-readonly` 类）
 
-## Component Contract: MilkdownEditor
+## Component Contract: AtomicEditor
 
-File: `src/components/Editor/MilkdownEditor.tsx`
+File: `src/components/Editor/AtomicEditor.tsx`
 
 ```tsx
-interface MilkdownEditorProps {
-  value: string            // 受控 markdown（外部变化仅切笔记/草稿重置触发）
-  onChange(value: string)
-  onSave?: () => void      // Ctrl/Cmd+S（编辑器内焦点；表单 window 监听兜底）
-  placeholder?: string
+interface AtomicEditorProps {
+  value: string            // 初始 doc（仅挂载时读取，编辑器之后为真相源）
+  onChange(value: string)  // updateListener docChanged → 回写
+  onSave?: () => void      // Ctrl/Cmd+S（Mod-s keymap）
+  placeholder?: string     // @codemirror/view placeholder 扩展
   autoFocus?: boolean
-  readonly?: boolean       // 归档只读（CrepeBuilder setReadonly）
+  readonly?: boolean       // readOnlyExtension（Compartment reconfigure）
   className?: string
-  documentId: string       // 文档身份：变化时重建（光标/undo 不串笔记）
+  documentId: string       // 文档身份：变化时重挂载（双保险）
 }
 ```
 
-- 装配：CrepeBuilder 已内置 commonmark/gfm/listener/history/indent/trailing/clipboard/upload；
-  `builder.editor.config(...).use(...)` 追加自研插件（customMarks、Mod-s keymap）
-- **feature 顺序敏感**：latex feature 强制要求 CodeMirror flag（`useCrepeFeatures` 检查），
-  必须先 addFeature(codeMirror) 再 addFeature(latex)
-- 受控回写：`listener.markdownUpdated`（200ms 防抖于框架内）→ onChange；
-  value 兜底 effect 需等 create() 完成（editorViewCtx 就绪）后再 getMarkdown 对比，否则崩溃
+- **受控语义（关键）**：原子编辑器非受控，切笔记靠 **`ContentArea` 给 `NoteView` 加
+  `key={activeNoteId}`** 强制重挂载——draft 初始值即新笔记 content，编辑器读正确初始值。
+  NoteView 的「重置 draft 的 useEffect」已删除（重挂载接管）。
+- 自组 EditorView（而非 `AtomicCodeMirrorEditor` 组件）：组件句柄不暴露 EditorView，
+  MarkdownInsertApi 的 wrap/block/jumpTo 需 dispatch 文档变更。
+- 扩展顺序对齐 atomic 组件源码（`AtomicCodeMirrorEditor.tsx`），追加 placeholder /
+  mathExtension / underlineExtension / Mod-s keymap。
 
-### MarkdownInsertApi（markdownInsertApi.ts）——ProseMirror 命令实现
+### MarkdownInsertApi（markdownInsertApi.ts）——CM6 源码偏移命令
 
 ```ts
 interface MarkdownInsertApi {
-  wrap(before, after?, placeholder?): void   // toggleMark / 链接 / math_inline 插入
-  block(prefix, suffix?, opts?): void        // setBlockType / wrapInList / wrapInBlockquote / 节点插入
-  insertImage(path: string): void            // image 节点（alt=文件名去扩展）
-  jumpTo(item: OutlineItem): void            // level+text 匹配 heading 节点定位（非偏移）
+  wrap(before, after?, placeholder?): void   // 源码包裹；选中替换 before..after
+  block(prefix, suffix?, opts?): void        // 行级行首插入 / 块级多行块插入
+  insertImage(path: string): void            // ![alt](path)，路径 () 转义 %28/%29
+  jumpTo(item: OutlineItem): void            // item.offset 定位（恢复 offset 契约）
   focus(): void
 }
 ```
 
-- wrap 的 before → mark 名映射：`**`→strong、`*`→em、`~~`→strike_through、`` ` ``→inline_code、
-  `==`→highlight、`<u>`→underline、`[`→link、`$`→math_inline 节点
-- 节点名注意：分割线是 `hr` 不是 `horizontal_rule`；公式块 = code_block + language 'LaTeX'
-- 所有命令经 `editor.action(ctx => view...)` 且检查 `view.editable`（只读态 no-op）
+- 全部 `view.dispatch({ changes, selection })`；view 惰性获取（挂载前 null → no-op）
+- block 块级：列表项内补空行退出列表；围栏内容区内插入落到围栏结束后
+- jumpTo 用 `item.offset`（CM6 源码偏移直接有效，替代 Milkdown 的 level+text 匹配）
 
-## customMarks.ts（==高亮== / <u>下划线</u>）——自研扩展 mark
+## mathExtension（$…$ / $$…$$）——自研 KaTeX 公式
 
-- 解析：`$remark` 转换插件（unist-util-visit）——text 节点 `==x==` 拆 highlight 节点；
-  **`<u>` 被 remark-parse 拆成两个 html 节点**（`<u>` + `</u>`），需在 parent.children 中
-  成对查找合并为 underline 节点
-- **陷阱：`'==x=='.split(/(==[^=]+==)/g)` 产出空串片段，必须 filter 掉**——
-  空 text 节点导致 ProseMirror 解析报错 `Empty text nodes are not allowed`（编辑态输入走
-  input rule 不触发，只在重开/只读解析时暴露）
-- 序列化：remarkStringifyOptionsCtx 的 handlers（mdast-util-to-markdown 2.x 的 State 无
-  `all()`，用 `containerPhrasing(node, info)`）输出 `==x==` / `<u>x</u>`
-- 编辑：toggleMark 命令 + 输入规则（`==x==`、`<u>x</u>` 自动激活）
+File: `src/components/Editor/extensions/mathExtension.ts`
 
-## 公式（latex feature）
+- **StateField** 提供 decoration（跨行 block widget 必须来自 StateField，非 ViewPlugin）
+- 语法树驱动：只扫 `Paragraph` / `ATXHeading1..6`，剔除 `InlineCode` / `Link` / `Image`
+  子树（表格非 Paragraph 天然排除）
+- 语法边界：行内 `$` 非转义 + 开后非空白 + 闭前非空白 + 内容不含 `$`/换行；
+  块级整行 `$$content$$`（单行）/ `$$` 起止行（多行）；先块后行内互不重叠
+- 光标行揭示：selection 覆盖的行显示源码（块被覆盖任一行 → 整块源码）；只读恒渲染
+- 点击渲染结果 → selection 移入公式源码（revealPos）
+- KaTeX `renderToString` + 内容缓存；错误显示 `.cm-math-error`
+- **block widget 不替换行尾换行**：`Decoration.replace` 范围 = [from, to)（不含换行）——
+  实测 replace 含换行 → Enter 后 selection 丢失（`getSelection()` 空），后续输入窜到文档开头
 
-- 行内 `$x$` → math_inline 节点（input rule 触发）；`$$` + Enter → code_block lang=LaTeX
-  （数学块 = 代码块 + LaTeX 语言 + renderPreview 预览，非独立节点）
-- 光标进入公式节点显示源码（Typora 式）；代码块退出用 **Ctrl+Enter（exitCode）**，
-  ArrowDown 在 CM6 块内行为不稳定
-- 代码块组件渲染预览的条件：selection 离开块（挂载后组件 watch [text, language] immediate
-  计算预览内容；编辑态 CM 编辑器 + 预览面板并存）
+## underlineExtension（<u>下划线</u>）——自研
 
-## 主题
+File: `src/components/Editor/extensions/underlineDecoration.ts`
 
-`--crepe-color-*`（官方 classic 主题变量）→ 项目 token 映射（milkdownTheme.css），
-`.dark` 作用域覆盖，Chromium 108 兼容（rgba 先行 + color-mix 覆盖）。
+- ViewPlugin + 正则 `<u>([^<]*?)</u>`：`<u>`/`</u>` 标签 `Decoration.replace({})` 隐藏，
+  内容 `Decoration.mark({ class: 'cm-underline' })`（CSS text-decoration: underline）
+- 光标行揭示（selection 覆盖的行显示源码）；源码保留 `<u>` 原文
 
-## 已知限制（测试与输入注入相关）
+## 主题（atomicTheme.css）
 
-- Playwright `keyboard.insertText` 整段注入：\n 不产生换行（成 hardbreak）、不触发 input
-  rules（`- ` 列表等不转换）——smoke 用逐行 insertText + Enter 或逐字符 type
-- 快速 insertText 含公式行（`$x_i$`）+ input rule 组合触发 ProseMirror
-  `Position out of range`（真实逐字输入无此问题）——长文档 smoke 行内不含公式
-- task 勾选框选择器：`.milkdown-list-item-block .label`（.unchecked/.checked 区分状态），
-  组件 DOM 无 data-item-type 属性
+- atomic-editor 通过 `--atomic-editor-*` 变量主题化；本项目在 `.atomic-cm-editor` 上
+  映射项目 shadcn 语义色（`--foreground`/`--muted-foreground`/`--background`/`--border` 等），
+  深浅色自动跟随 `html.dark`（不使用 atomic 的 `[data-theme="light"]` 机制）
+- 自研装饰样式（`.cm-math-inline`/`.cm-math-block`/`.cm-math-error`/`.cm-underline`）同文件定义
+- KaTeX 字体经 vite `katexWoff2Only` 裁剪（仅 woff2）；构建目标 chrome 88（lightningcss 降级）
+
+## 已知限制（测试与渲染相关）
+
+- **CM6 虚拟化渲染**：`.cm-line` 仅可视行，长文档测试不能断言全量 DOM 行数（旧 ProseMirror
+  全量渲染的 `liCount >= 500` 断言不适用）——断言源码行数 `getContent().split('\n').length`
+- **atomic 非光标行隐藏转义符**：`\$` 的 `\` 在渲染 DOM 里被隐藏（显示 `$`），源码保留 `\$`——
+  边界断言走 store 源码，不能走 `.cm-content` textContent（且 textContent 无换行符）
+- **CM6 markdown 续行**：`> `/`- `/`1. ` 后 Enter 自动续行标记（`insertNewlineContinueMarkup`），
+  测试退出引用/列表用 Backspace 删除续行标记；长文档 insertText 勿带 `- ` 前缀（会叠加嵌套）
+- **光标行揭示**：autoFocus 光标在首行 → 首行公式不渲染；重开断言前先 `Control+End` 跳末尾
+- **block widget**：替换范围严禁含换行符（见 mathExtension 备注）
+
+## 体积
+
+- dist 解压 1.68 MB（JS 1.02MB + CSS 146KB + KaTeX 字体 ~260KB），≤ 5MB（AC13）
