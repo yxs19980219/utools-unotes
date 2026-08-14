@@ -1,12 +1,12 @@
 /**
- * components/NoteView.tsx —— 笔记详情（实时保存时代，08-12 重构）
+ * components/NoteView.tsx —— 笔记详情（实时保存时代，08-12 重构；08-14 内核换 atomic-editor）
  *
  * 交互契约（R6-R8/R10/R12-R13）：
- * - 打开非归档笔记即进入编辑态（CodeMirror + MarkdownToolbar），无「写正文」按钮
- * - 正文实时保存：停止输入 300ms 防抖自动落盘（updateNote）；成功静默、失败 toast
+ * - 打开非归档笔记即进入编辑态（AtomicEditor + MarkdownToolbar），无「写正文」按钮
+ * - 正文实时保存：停止输入 500ms 防抖自动落盘（updateNote）；成功静默、失败 toast
  * - 无手动保存按钮、无底部操作栏、无未保存确认（DirtyGuard 已整体删除）
  * - Ctrl+S 立即 flush（清防抖定时器 + 立即保存）
- * - 归档笔记只读（MarkdownView），无编辑入口
+ * - 归档笔记只读（AtomicEditor readOnly，同一内核渲染：公式/表格/高亮一致），无编辑入口
  * - 标签 + 更新时间元信息行在工具行下方共用展示（编辑/只读均可见）
  *
  * 并发正确性（design.md 3.2）：savingRef 串行化 + 成功后的追平循环——
@@ -16,14 +16,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeftIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
-import CodeMirrorEditor, { type MarkdownInsertApi } from '@/components/Editor/CodeMirrorEditor'
+import AtomicEditor, { type MarkdownInsertApi } from '@/components/Editor/AtomicEditor'
 import MarkdownToolbar from '@/components/Editor/MarkdownToolbar'
-import MarkdownView from '@/components/MarkdownView'
 import TagChip from '@/components/TagChip'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { useNotesStore } from '@/stores/notes'
 import { useObjectsStore } from '@/stores/objects'
 import { useTagsStore } from '@/stores/tags'
@@ -179,8 +177,9 @@ export default function NoteView({ noteId }: { noteId: string }) {
             <MetaInfoPanel note={note} onJump={handleJump} className="ml-auto" />
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            <CodeMirrorEditor
+            <AtomicEditor
               ref={setEditorApi}
+              documentId={noteId}
               value={draft}
               onChange={handleChange}
               onSave={handleSave}
@@ -190,26 +189,32 @@ export default function NoteView({ noteId }: { noteId: string }) {
           </div>
         </>
       ) : (
-        <ScrollArea className="min-h-0 flex-1">
-          <article className="flex flex-col gap-3 p-4">
-            {note.content ? (
-              <MarkdownView content={note.content} />
-            ) : (
-              <Empty className="gap-2">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <span className="text-lg leading-none">📄</span>
-                  </EmptyMedia>
-                  <EmptyTitle>暂无正文</EmptyTitle>
-                </EmptyHeader>
-              </Empty>
-            )}
-          </article>
-        </ScrollArea>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {note.content ? (
+            <AtomicEditor
+              documentId={noteId}
+              value={note.content}
+              onChange={noopChange}
+              readOnly
+            />
+          ) : (
+            <Empty className="gap-2">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <span className="text-lg leading-none">📄</span>
+                </EmptyMedia>
+                <EmptyTitle>暂无正文</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
+          )}
+        </div>
       )}
     </div>
   )
 }
+
+/** 只读态 onChange no-op：归档笔记不可变（updateFilter 同时拦截编辑器内改动） */
+const noopChange = () => {}
 
 /** 未挂载编辑器时的空实现（工具栏点击无效果，编辑器挂载后 ref 自动生效） */
 const EMPTY_API: MarkdownInsertApi = {

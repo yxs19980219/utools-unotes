@@ -2,6 +2,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
+import { useNotesStore } from './stores/notes.ts'
 import { useUiStore } from './stores/ui.ts'
 
 /**
@@ -15,13 +16,17 @@ function applyTheme() {
 applyTheme()
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme)
 
-// 测试 hook（仅无 uTools 环境暴露）：ui-smoke 用 window.__snDebug.setSearch 触发搜索态
-//（uTools 内搜索走原生子输入框 setSubInput，不注入）
+// 测试 hook（仅无 uTools 环境暴露）：ui-smoke/smoke-editor 用 window.__snDebug
+// 触发搜索态 / 读取已落盘正文（round-trip 字节级断言）。uTools 内不注入。
 if (typeof utools === 'undefined') {
-  ;(window as unknown as { __snDebug?: { setSearch(query: string): void } }).__snDebug = {
+  ;(window as unknown as { __snDebug?: { setSearch(query: string): void; getActiveNoteContent(): string } }).__snDebug = {
     setSearch: (query: string) => {
       const q = query.trim()
       useUiStore.getState().setSearch(q.length > 0, q)
+    },
+    getActiveNoteContent: () => {
+      const id = useUiStore.getState().activeNoteId
+      return id ? (useNotesStore.getState().getById(id)?.content ?? '') : ''
     },
   }
 }

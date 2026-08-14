@@ -23,12 +23,32 @@ function stripDevelopmentField() {
   }
 }
 
+/**
+ * katexWoff2Only —— KaTeX 字体裁剪（AC13 体积优化）：
+ * katex.min.css 每个 @font-face 声明 woff2/woff/ttf 三种格式（共 ~1.02MB），
+ * Chromium 108+ 全支持 woff2，构建期剔除 woff/ttf 引用 → 只拷贝 woff2（~0.24MB）。
+ * 在 vite:css 处理（url 解析/拷贝）之前（enforce: 'pre'）改写源码。
+ */
+function katexWoff2Only() {
+  return {
+    name: 'katex-woff2-only',
+    enforce: 'pre' as const,
+    transform(code: string, id: string) {
+      if (!id.endsWith('.css') || !id.includes('katex')) return
+      // 剔除 woff/ttf 引用（连同其前置逗号），只留 woff2
+      return code
+        .replace(/,\s*url\(([^)]*\.(?:woff|ttf))\)\s*format\([^)]*\)/g, '')
+        .replace(/url\(([^)]*\.(?:woff|ttf))\)\s*format\([^)]*\)\s*,?\s*/g, '')
+    },
+  }
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
   // base: './' —— uTools 以 file:// 协议加载 dist/index.html，资源路径必须相对
   base: './',
-  plugins: [react(), tailwindcss(), stripDevelopmentField()],
+  plugins: [react(), tailwindcss(), katexWoff2Only(), stripDevelopmentField()],
   // Lightning CSS：把现代 CSS（oklch/color-mix/@layer/嵌套）自动降级转译，
   // 兼容 uTools 内置的旧 Chromium 内核（Tailwind 4 输出大量 Chrome 111+ 语法，
   // 老内核不认会导致整段样式失效 → 白屏/线框。这是线框问题的根治方案）

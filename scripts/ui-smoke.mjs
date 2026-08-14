@@ -108,93 +108,99 @@ try {
   await page.locator('.cm-content').first().waitFor()
   await page.locator('.cm-content').first().click()
   await page.keyboard.type('# 标题\n- 列表项一\n- 列表项二')
-  await waitFor(() => !!document.querySelector('.sn-md-h1') &&
-    (document.querySelectorAll('.sn-list-bullet').length ?? 0) >= 2)
+  await waitFor(() => !!document.querySelector('.cm-line.cm-atomic-h1') &&
+    (document.querySelectorAll('.cm-atomic-list-marker.cm-atomic-bullet').length ?? 0) >= 1)
   const deco = await page.evaluate(() => {
     const cm = document.querySelector('.cm-content')
     return {
-      bulletCount: cm?.querySelectorAll('.sn-list-bullet').length ?? 0,
-      headingStyled: !!cm?.querySelector('.cm-line .sn-md-h1'),
+      bulletCount: cm?.querySelectorAll('.cm-atomic-list-marker.cm-atomic-bullet').length ?? 0,
+      headingStyled: !!cm?.querySelector('.cm-line.cm-atomic-h1'),
     }
   })
-  ok('即时渲染：标题样式装饰', deco.headingStyled)
-  ok('即时渲染：无序列表 • 项目符号', deco.bulletCount >= 2)
+  ok('即时渲染：标题样式装饰（atomic）', deco.headingStyled)
+  ok('即时渲染：无序列表 • 项目符号（atomic）', deco.bulletCount >= 1)
 
-  // 3b. 快捷工具栏：点击「勾选框」插入任务列表
+  // 3b. 快捷工具栏：点击「勾选框」插入任务列表 → 勾选框可点击切换写回 [x]
   await page.keyboard.press('Enter')
+  await page.keyboard.press('Backspace') // 去掉列表续行标记，回到空行
   await page.getByRole('button', { name: '勾选框' }).click()
   await page.keyboard.type('待办项')
-  await waitFor(() => document.querySelectorAll('.sn-task-box').length >= 1)
-  const taskCount = await page.evaluate(() => document.querySelectorAll('.sn-task-box').length)
-  ok('快捷工具栏：勾选框插入', taskCount >= 1)
+  await page.keyboard.press('Enter') // 光标离开任务行 → 渲染勾选框
+  await waitFor(() => document.querySelectorAll('input.cm-atomic-task-checkbox').length >= 1)
+  const taskCount = await page.evaluate(() => document.querySelectorAll('input.cm-atomic-task-checkbox').length)
+  ok('快捷工具栏：勾选框插入（atomic）', taskCount >= 1)
+  await page.locator('input.cm-atomic-task-checkbox').first().click()
+  await waitFor((s) => window.__snDebug.getActiveNoteContent().includes(s), 4000, '[x]')
+  ok('AC2：勾选框点击切换写回 [x]',
+    await page.evaluate(() => window.__snDebug.getActiveNoteContent().includes('[x]')))
 
-  // 3c. 代码块：Typora 式独立输入框（nested editor 连续输入、无围栏可见、语言切换改写源码）
+  // 3c. 代码块：光标行显示围栏源码；离开后围栏渲染、无 ``` 残留；语言可改源码
   await page.getByRole('button', { name: '代码块', exact: true }).click()
-  await page.locator('.sn-md-codeblock-widget').last().waitFor()
-  await waitFor(() => !!document.querySelector('.sn-md-codeblock-widget .cm-content:focus'))
+  await waitFor(() => document.querySelector('.cm-content')?.textContent?.includes('```ts'))
+  ok('代码块：光标行显示围栏源码（```ts）',
+    await page.evaluate(() => document.querySelector('.cm-content')?.textContent?.includes('```ts')))
   await page.keyboard.type('const editorProbe = true')
-  await waitFor(() => document.querySelector('.cm-content')?.textContent?.includes('const editorProbe = true'))
-  ok('代码块：插入后出现独立输入框并自动聚焦', true)
-  ok('代码块：连续输入同步源码且无围栏可见',
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown') // 离开围栏 → 渲染
+  await waitFor(() => document.querySelectorAll('.cm-line.cm-atomic-fenced-code').length >= 1)
+  ok('代码块：离开后围栏渲染且无 ``` 残留',
     await page.evaluate(() => {
-      const widget = document.querySelector('.sn-md-codeblock-widget')
-      return !!widget && !(widget.innerText ?? '').includes('```')
+      const t = document.querySelector('.cm-content')?.textContent ?? ''
+      return !t.includes('```') && t.includes('const editorProbe = true')
     }))
-  const codePicker = page.locator('.sn-md-codeblock-widget .sn-lang-picker').last()
-  await codePicker.selectOption('python')
-  // 语言切换 → 改写围栏源码 → widget 重建后 select 值应保持 python
-  // （若源码未改，updateDOM 会按 model.lang 把 select 重置回原语言）
-  await waitFor(() => document.querySelector('.sn-md-codeblock-widget .sn-lang-picker')?.value === 'python')
-  await page.waitForTimeout(300)
-  ok('代码块：语言选择器可切换（改写围栏源码）',
-    (await page.locator('.sn-md-codeblock-widget .sn-lang-picker').last().inputValue()) === 'python')
+  // 语言切换：ArrowUp×2 回 ```ts 行 → End → 删 ts → 输入 python
+  await page.keyboard.press('ArrowUp')
+  await page.keyboard.press('ArrowUp')
+  await page.keyboard.press('ArrowUp')
+  await page.keyboard.press('End')
+  await page.keyboard.press('Backspace')
+  await page.keyboard.press('Backspace')
+  await page.keyboard.type('python')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.waitForTimeout(900) // 防抖落盘
+  ok('AC4：代码块语言改写围栏源码（```python）',
+    await page.evaluate(() => window.__snDebug.getActiveNoteContent().includes('```python')))
 
-  // 3d. 真实表格：单元格编辑 + 增删结构
+  // 3d. 真实表格：WYSIWYG 单元格直编 + 右键菜单行列操作
+  await page.keyboard.press('Control+End')
+  await page.keyboard.type('\n')
   await page.getByRole('button', { name: '表格', exact: true }).click()
-  await page.locator('.sn-md-table-widget table').last().waitFor()
-  ok('表格：插入后出现真实 table', (await page.locator('.sn-md-table-widget table').count()) >= 1)
-  await page.locator('.sn-md-table-cell[data-cell-section="body"]').first().click()
-  await page.locator('.sn-md-table-cell-editor .cm-content').waitFor()
+  await page.locator('.cm-atomic-table table').first().waitFor()
+  ok('表格：插入后出现真实 table（atomic）', (await page.locator('.cm-atomic-table table').count()) >= 1)
+  // 结构操作：右键表格 → 菜单 Insert row below（先做结构、后进单元格，撤销干净）
+  await page.locator('.cm-atomic-table tbody tr td').first().click({ button: 'right' })
+  await page.locator('.cm-atomic-table-menu').waitFor()
+  const tableMenuText = await page.locator('.cm-atomic-table-menu').innerText()
+  ok('表格：右键菜单含行列操作', tableMenuText.includes('Insert row below') && tableMenuText.includes('Delete column'))
+  await page.locator('.cm-atomic-table-menu').getByText('Insert row below', { exact: true }).click()
+  await waitFor(() => document.querySelectorAll('.cm-atomic-table tbody tr').length >= 2)
+  ok('表格：菜单新增行（Insert row below）',
+    (await page.locator('.cm-atomic-table tbody tr').count()) >= 2)
+  // 单元格直编：点 body 首个单元格 → 输入即写回源码
+  await page.locator('.cm-atomic-table tbody tr td .cm-atomic-table-cell-source').first().click()
   await page.keyboard.type('单元格编辑')
-  await page.keyboard.press('Tab')
-  await waitFor(() => document.querySelector('.sn-md-table-cell-editor')?.closest('[data-cell-key]')?.getAttribute('data-cell-key') === 'body:0:1')
-  ok('表格：Tab 移动到下一单元格', true)
-  await page.keyboard.press('Shift+Tab')
-  await waitFor(() => document.querySelector('.sn-md-table-cell-editor')?.closest('[data-cell-key]')?.getAttribute('data-cell-key') === 'body:0:0')
-  ok('表格：Shift+Tab 返回上一单元格', true)
-  await page.keyboard.press('Tab')
-  await waitFor(() => document.querySelector('.sn-md-table-cell-editor')?.closest('[data-cell-key]')?.getAttribute('data-cell-key') === 'body:0:1')
-  await page.keyboard.press('Enter')
-  await waitFor(() => document.querySelectorAll('.sn-md-table-widget tbody tr').length >= 2)
-  await waitFor(() => document.querySelector('.sn-md-table-cell-editor')?.closest('[data-cell-key]')?.getAttribute('data-cell-key') === 'body:1:1')
-  ok('表格：Enter 新增行并下移', true)
-  // 工具条 hover 悬浮：每次点击行列按钮前先 hover 表格（08-14 交互改造；
-  // 结构变化会改变表格宽度，hover 位置可能落到表格外导致工具条消失）
-  const clickTableBtn = async (name) => {
-    await page.locator('.sn-md-table-widget').last().hover()
-    await page.getByRole('button', { name, exact: true }).last().click()
-  }
-  await clickTableBtn('＋行')
-  await waitFor(() => document.querySelectorAll('.sn-md-table-widget tbody tr').length >= 3)
-  await clickTableBtn('＋列')
-  await waitFor(() => document.querySelectorAll('.sn-md-table-widget thead th').length >= 3)
-  const tableProbe = await page.evaluate(() => ({
-    headers: document.querySelectorAll('.sn-md-table-widget thead th').length,
-    rows: document.querySelectorAll('.sn-md-table-widget tbody tr').length,
-    hasEditedCell: [...document.querySelectorAll('.sn-md-table-cell')].some((cell) => cell.textContent?.includes('单元格编辑')),
-  }))
-  ok('表格：单元格可编辑', tableProbe.hasEditedCell)
-  ok('表格：可新增行列', tableProbe.headers >= 3 && tableProbe.rows >= 2)
-  await clickTableBtn('－列')
-  await waitFor(() => document.querySelectorAll('.sn-md-table-widget thead th').length === 2)
-  await clickTableBtn('－行')
-  await waitFor(() => document.querySelectorAll('.sn-md-table-widget tbody tr').length === 2)
-  ok('表格：可删除行列', true)
-  await page.keyboard.press('Control+z')
-  await waitFor(() => document.querySelectorAll('.sn-md-table-widget tbody tr').length === 3)
-  await page.keyboard.press('Control+z')
-  await waitFor(() => document.querySelectorAll('.sn-md-table-widget thead th').length === 3)
-  ok('表格：结构操作支持撤销', true)
+  await waitFor(() => document.querySelector('.cm-atomic-table tbody tr td')?.textContent?.includes('单元格编辑'))
+  // 退出单元格：点表格后最后一个空行（编辑器光标回文档尾）
+  await page.locator('.cm-content .cm-line').last().click()
+  await waitFor((s) => window.__snDebug.getActiveNoteContent().includes(s), 4000, '单元格编辑')
+  ok('表格：单元格可编辑（WYSIWYG 直编写回源码）',
+    await page.evaluate(() => window.__snDebug.getActiveNoteContent().includes('单元格编辑')))
+
+  // 3e. 公式：行内 $...$ KaTeX 渲染 + R11 无斜杠菜单
+  await page.keyboard.press('Control+End')
+  await page.keyboard.type('\n\n行内公式 $x^2$ 结束') // 表格后需空行（否则并入表格行）
+  await page.keyboard.press('Enter') // 光标离开公式行 → 渲染
+  await waitFor(() => document.querySelectorAll('.cm-math-inline').length >= 1)
+  ok('AC1：行内公式 KaTeX 渲染（.cm-math-inline）',
+    (await page.locator('.cm-math-inline .katex').count()) >= 1)
+  await page.keyboard.type('/')
+  await page.waitForTimeout(300)
+  ok('R11：输入 / 不弹斜杠命令菜单（无块编辑形态）',
+    (await page.getByRole('menu').count()) === 0 &&
+    (await page.locator('.cm-tooltip').count()) === 0)
+  await page.keyboard.press('Backspace')
+  await page.keyboard.press('Backspace')
   // 实时保存：无「保存正文」按钮；防抖 500ms 落盘 → 固定 900ms 余量
   await page.waitForTimeout(900)
   ok('无保存正文按钮', (await page.getByRole('button', { name: /保存正文/ }).count()) === 0)
@@ -204,15 +210,19 @@ try {
   await page.getByText('冒烟笔记').first().waitFor()
   await page.getByText('冒烟笔记').first().click()
   await page.locator('.cm-content').first().waitFor()
+  const persistedContent = await page.evaluate(() => window.__snDebug.getActiveNoteContent())
   const persisted = await page.evaluate(() => ({
     text: document.querySelector('.cm-content')?.textContent ?? '',
-    table: document.querySelectorAll('.sn-md-table-widget table').length,
-    code: document.querySelectorAll('.sn-md-codeblock-widget').length,
-    editedCell: [...document.querySelectorAll('.sn-md-table-cell')].some((cell) => cell.textContent?.includes('单元格编辑')),
+    table: document.querySelectorAll('.cm-atomic-table table').length,
+    fence: document.querySelectorAll('.cm-line.cm-atomic-fenced-code').length,
+    editedCell: [...document.querySelectorAll('.cm-atomic-table td')].some((c) => c.textContent?.includes('单元格编辑')),
   }))
   ok('实时保存：重开后正文仍在（未手动保存）',
-    persisted.text.includes('列表项一') && persisted.text.includes('待办项'))
-  ok('编辑器：代码块/表格状态可持久化', persisted.table >= 1 && persisted.code >= 1 && persisted.editedCell)
+    persistedContent.includes('列表项一') && persistedContent.includes('待办项'))
+  ok('AC7：round-trip 源文本字节一致（公式/表格源码原样）',
+    persistedContent.includes('行内公式 $x^2$ 结束') &&
+    persistedContent.includes('| 列1 | 列2 |'))
+  ok('编辑器：代码块/表格状态可持久化', persisted.table >= 1 && persisted.fence >= 1 && persisted.editedCell)
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.getByRole('tab', { name: '首页' }).click()
   await page.locator('aside').getByText('UI 冒烟测试对象').first().waitFor()
@@ -263,14 +273,23 @@ try {
     (await page.getByRole('button', { name: /新笔记/ }).count()) === 0 &&
     (await page.getByRole('button', { name: '恢复', exact: true }).count()) === 0 &&
     (await page.getByRole('button', { name: '查看元数据' }).count()) === 1)
-  // 归档笔记 → 只读 NoteView（无正文编辑器）
+  // 归档笔记 → 只读 NoteView（同一内核 readOnly：编辑器在但禁编辑、公式仍渲染）
   await page.getByText('冒烟笔记').first().click()
   await waitForText('已归档（只读）')
   const archivedNote = await page.evaluate(() => document.body.innerText)
-  const readOnlyNoEditor = await page.evaluate(
-    () => document.querySelectorAll('.cm-content').length === 0,
-  )
-  ok('归档笔记只读 NoteView（无编辑器）', archivedNote.includes('已归档（只读）') && readOnlyNoEditor)
+  const readOnlyEditor = await page.evaluate(() => {
+    const ed = document.querySelector('.cm-editor.cm-atomic-readonly') ?? document.querySelector('.atomic-cm-editor')
+    return {
+      readonlyClass: !!document.querySelector('.cm-editor.cm-atomic-readonly'),
+      contentEditable: document.querySelector('.cm-content')?.isContentEditable,
+      mathRendered: document.querySelectorAll('.cm-math-inline').length >= 1,
+    }
+  })
+  ok('AC9：归档笔记只读（同一内核 readOnly，无工具栏）',
+    archivedNote.includes('已归档（只读）') && readOnlyEditor.readonlyClass &&
+    readOnlyEditor.contentEditable === false &&
+    (await page.getByRole('toolbar').count()) === 0)
+  ok('AC9：归档只读公式仍渲染（KaTeX）', readOnlyEditor.mathRendered)
   // 归档视图对象行右键 = 恢复/删除
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.locator('aside').getByText('UI 冒烟测试对象').first().click({ button: 'right' })
@@ -371,7 +390,7 @@ try {
   ok('进入笔记后对象栏隐藏（无新笔记按钮）',
     (await page.getByRole('button', { name: /新笔记/ }).count()) === 0)
   // 实时保存时代：无「写正文」按钮（已进入编辑态）、无 localStorage 草稿、切走无确认框
-  await page.locator('.cm-content').first().click()
+  await page.locator('.cm-content .cm-line').last().click()
   await page.keyboard.type('\n实时保存测试')
   await page.waitForTimeout(900) // 防抖 500ms 落盘 → 固定 900ms 余量
   const draftKeys = await page.evaluate(() =>
@@ -431,6 +450,7 @@ if (errors.length) {
   console.log('\n[渲染错误]', errors)
   process.exitCode = 1
 } else {
-  console.log(`\nUI 冒烟：${results.filter((r) => r[1]).length}/${results.length} 通过，无渲染错误`)
+  const passCount = results.filter((r) => r[1]).length
+  console.log(`\nUI 冒烟通过 ${passCount}/${results.length}，无渲染错误`)
 }
 await browser.close()
