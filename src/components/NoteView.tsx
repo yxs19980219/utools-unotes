@@ -216,5 +216,6 @@ const EMPTY_API: MarkdownInsertApi = {
   block: () => {},
   insertImage: () => {},
   jumpTo: () => {},
+  toggleInline: () => {},
   focus: () => {},
 }

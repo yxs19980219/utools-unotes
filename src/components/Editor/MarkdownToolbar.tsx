@@ -79,9 +79,9 @@ function pickImageFile(cb: (path: string) => void): void {
 
 const TOOLS: ToolDef[] = [
   // ---- 行内 wrap ----
-  { id: 'bold', label: '加粗', icon: Bold, run: (a) => a.wrap('**', '**') },
-  { id: 'italic', label: '斜体', icon: Italic, run: (a) => a.wrap('*', '*') },
-  { id: 'underline', label: '下划线', icon: Underline, run: (a) => a.wrap('<u>', '</u>') },
+  { id: 'bold', label: '加粗', icon: Bold, run: (a) => a.toggleInline('**', '**', 'StrongEmphasis') },
+  { id: 'italic', label: '斜体', icon: Italic, run: (a) => a.toggleInline('*', '*', 'Emphasis') },
+  { id: 'underline', label: '下划线', icon: Underline, run: (a) => a.toggleInline('<u>', '</u>') },
   { id: 'strike', label: '删除线', icon: Strikethrough, run: (a) => a.wrap('~~', '~~') },
   { id: 'highlight', label: '高亮', icon: Highlighter, run: (a) => a.wrap('==', '==') },
   { id: 'inline-code', label: '内联代码', icon: Code, run: (a) => a.wrap('`', '`') },

@@ -24,8 +24,8 @@
   --atomic-editor-accent: var(--foreground);
   --atomic-editor-accent-bright: var(--foreground);
   --atomic-editor-accent-soft: var(--muted);
-  --atomic-editor-link: var(--foreground);
-  --atomic-editor-link-hover: var(--muted-foreground);
+  --atomic-editor-link: #3b82f6;
+  --atomic-editor-link-hover: #2563eb;
   --atomic-editor-code-bg: var(--muted);
   /* 选区/搜索高亮（浅色与暗色共用的中性 tint） */
   --atomic-editor-selection-bg: var(--editor-accent-45);
@@ -59,4 +59,48 @@
   max-width: none;
   margin-inline: 0;
   padding-inline: 0.75rem;
+}
+
+/* ---- 列表圆点加深加大（R2）：muted → foreground + scale 放大（不动 alcove 布局盒） ---- */
+.cm-atomic-bullet {
+  color: var(--foreground);
+  transform: scale(1.3);
+  transform-origin: center;
+}
+
+/* ---- 公式块间距（R3）：覆盖 KaTeX displayMode 默认 margin:1em 0 ---- */
+.cm-math-block .katex-display {
+  margin: 0.15em 0;
+}
+
+/* ---- 标题字号增大 + 底部细线（R5） ---- */
+.cm-line.cm-atomic-h1 { font-size: 1.45em; }
+.cm-line.cm-atomic-h2 { font-size: 1.3em; }
+.cm-line.cm-atomic-h3 { font-size: 1.18em; }
+.cm-line.cm-atomic-h4 { font-size: 1.06em; }
+.cm-line.cm-atomic-h5 { font-size: 1em; }
+.cm-line.cm-atomic-h6 { font-size: 0.95em; }
+
+.cm-line.cm-atomic-h1,
+.cm-line.cm-atomic-h2,
+.cm-line.cm-atomic-h3,
+.cm-line.cm-atomic-h4,
+.cm-line.cm-atomic-h5,
+.cm-line.cm-atomic-h6 {
+  position: relative;
+}
+
+.cm-line.cm-atomic-h1::after,
+.cm-line.cm-atomic-h2::after,
+.cm-line.cm-atomic-h3::after,
+.cm-line.cm-atomic-h4::after,
+.cm-line.cm-atomic-h5::after,
+.cm-line.cm-atomic-h6::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-bottom: 1px solid var(--border);
+  pointer-events: none;
 }

@@ -17,6 +17,7 @@ import { syntaxTree } from '@codemirror/language'
 import { EditorView } from '@codemirror/view'
 
 import type { OutlineItem } from '@/lib/outline'
+import { UNDERLINE_RE } from './extensions/underlineDecoration'
 
 /** 快捷工具栏插入 API（MarkdownToolbar 消费；契约与 Milkdown 版本一致） */
 export interface MarkdownInsertApi {
@@ -31,6 +32,11 @@ export interface MarkdownInsertApi {
   insertImage(path: string): void
   /** 跳转定位：按大纲项 offset 滚动并移动光标（元信息面板大纲跳转用） */
   jumpTo(item: OutlineItem): void
+  /**
+   * 内联格式 toggle（完成/取消）：选中文字前后缀判断包裹/取消；无选中时若光标在
+   * 对应格式内（nodeName 走语法树、下划线走正则）则取消，否则生成空标记光标居中。
+   */
+  toggleInline(open: string, close?: string, nodeName?: string): void
   focus(): void
 }
 
@@ -149,6 +155,88 @@ export function createMarkdownInsertApi(getView: () => EditorView | null): Markd
 
     focus() {
       getView()?.focus()
+    },
+
+    toggleInline(open, close = open, nodeName) {
+      const view = getView()
+      if (!view) return
+      const { state } = view
+      const { from, to } = state.selection.main
+
+      // 有选中：前后缀判断包裹/取消
+      if (from !== to) {
+        const before = state.sliceDoc(Math.max(0, from - open.length), from)
+        const after = state.sliceDoc(to, to + close.length)
+        if (before === open && after === close) {
+          view.dispatch({
+            changes: [
+              { from: from - open.length, to: from },
+              { from: to, to: to + close.length },
+            ],
+            selection: { anchor: from - open.length },
+          })
+        } else {
+          const sel = state.sliceDoc(from, to)
+          view.dispatch({
+            changes: { from, to, insert: open + sel + close },
+            selection: { anchor: to + open.length + close.length },
+          })
+        }
+        view.focus()
+        return
+      }
+
+      // 无选中：加粗/斜体走语法树定位格式内取消
+      if (nodeName) {
+        const node = syntaxTree(state).resolveInner(from, 1)
+        let n: typeof node | null = node
+        let target: typeof node | null = null
+        while (n && n.name !== 'Document') {
+          if (n.name === nodeName && n.from < n.to) {
+            target = n
+            break
+          }
+          n = n.parent
+        }
+        if (target) {
+          view.dispatch({
+            changes: [
+              { from: target.from, to: target.from + open.length },
+              { from: target.to - close.length, to: target.to },
+            ],
+            selection: { anchor: target.from },
+          })
+          view.focus()
+          return
+        }
+      } else {
+        // 下划线：正则找光标所在包裹对
+        const text = state.doc.toString()
+        UNDERLINE_RE.lastIndex = 0
+        let m: RegExpExecArray | null
+        while ((m = UNDERLINE_RE.exec(text)) !== null) {
+          const uFrom = m.index
+          const uTo = m.index + m[0].length
+          if (from > uFrom && from < uTo) {
+            view.dispatch({
+              changes: [
+                { from: uFrom, to: uFrom + open.length },
+                { from: uTo - close.length, to: uTo },
+              ],
+              selection: { anchor: uFrom },
+            })
+            view.focus()
+            return
+          }
+        }
+      }
+
+      // 均未命中：生成空标记，光标居中
+      view.dispatch({
+        changes: { from, to: from, insert: open + close },
+        selection: { anchor: from + open.length },
+      })
+      view.focus()
     },
   }
 }

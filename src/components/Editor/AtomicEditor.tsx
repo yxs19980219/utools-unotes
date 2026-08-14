@@ -30,7 +30,7 @@ import {
   rectangularSelection,
   EditorView,
 } from '@codemirror/view'
-import { Compartment, EditorState, Prec } from '@codemirror/state'
+import { Compartment, EditorSelection, EditorState, Prec } from '@codemirror/state'
 import { indentOnInput, LanguageDescription } from '@codemirror/language'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
@@ -108,6 +108,28 @@ const CODE_LANGUAGES: readonly LanguageDescription[] = [
   }),
 ]
 
+/**
+ * R1：空引用行行尾 Enter 退出引用（Obsidian 标准，Enter 两次）——lang-markdown 的
+ * insertNewlineContinueMarkup 需「连续两行空引用」才退出（实际 Enter 三次）。这里改为
+ * 空引用行 Enter 即退出；非空引用行/非引用行返回 false，让 markdownKeymap 继续处理
+ * （续 `> ` / 列表续行不受影响）。
+ */
+function exitBlockquoteOnEnter(view: EditorView): boolean {
+  const { state } = view
+  const sel = state.selection.main
+  if (!sel.empty) return false
+  const line = state.doc.lineAt(sel.from)
+  if (sel.from !== line.to) return false
+  const m = /^(\s*)(>)\s*$/.exec(line.text)
+  if (!m) return false
+  const from = line.from + m[1].length
+  view.dispatch({
+    changes: { from, to: line.to, insert: '' },
+    selection: EditorSelection.cursor(from),
+  })
+  return true
+}
+
 const AtomicEditor = memo(
   forwardRef<MarkdownInsertApi, AtomicEditorProps>(function AtomicEditor(
     {
@@ -131,6 +153,11 @@ const AtomicEditor = memo(
     const rootRef = useRef<HTMLDivElement | null>(null)
     const viewRef = useRef<EditorView | null>(null)
     const readOnlyCompartmentRef = useRef(new Compartment())
+
+    // api 提前到 effect 之前：keymap（Mod-b/i/u）需在扩展装配时引用 toggleInline，
+    // 而 api 只依赖 viewRef（useRef 稳定），位置不影响语义
+    const api = useMemo(() => createMarkdownInsertApi(() => viewRef.current), [])
+    useImperativeHandle(ref, () => api, [api])
 
     // 编辑器生命周期：documentId 变化时销毁重建（父组件 key remount + 本 effect 双保险）
     useEffect(() => {
@@ -190,8 +217,30 @@ const AtomicEditor = memo(
                     return true
                   },
                 },
+                {
+                  key: 'Mod-b',
+                  run: () => {
+                    api.toggleInline('**', '**', 'StrongEmphasis')
+                    return true
+                  },
+                },
+                {
+                  key: 'Mod-i',
+                  run: () => {
+                    api.toggleInline('*', '*', 'Emphasis')
+                    return true
+                  },
+                },
+                {
+                  key: 'Mod-u',
+                  run: () => {
+                    api.toggleInline('<u>', '</u>')
+                    return true
+                  },
+                },
               ]),
             ),
+            Prec.high(keymap.of([{ key: 'Enter', run: exitBlockquoteOnEnter }])),
             readOnlyCompartmentRef.current.of(readOnlyExtension(readOnly)),
             EditorView.updateListener.of((update) => {
               if (!update.docChanged) return
@@ -218,12 +267,6 @@ const AtomicEditor = memo(
         effects: readOnlyCompartmentRef.current.reconfigure(readOnlyExtension(readOnly)),
       })
     }, [readOnly])
-
-    const api = useMemo(
-      () => createMarkdownInsertApi(() => viewRef.current),
-      [],
-    )
-    useImperativeHandle(ref, () => api, [api])
 
     return <div className={cn('atomic-cm-editor', 'h-full', className)} ref={rootRef} />
   }),
