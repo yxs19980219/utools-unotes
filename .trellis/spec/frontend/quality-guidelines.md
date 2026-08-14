@@ -125,6 +125,7 @@ gh release create vX.Y.Z SourceNote-vX.Y.Z.zip --title "utools-unotes vX.Y.Z" --
 约定：
 - **zip 不进仓库**（.gitignore 已含 `SourceNote-*.zip`），用完即删，需要时从 Release 下载
 - **Release 标题与仓库名一致**（`utools-unotes vX.Y.Z`），**禁止用产品名 SourceNote**——README 标题也统一为 `# utools-unotes`（用户曾反馈页面又变成 sourcenote）；tag 用 `v` + SemVer
+- **commit message 禁止带版本号**（用户 08-14 明确要求）：版本号只通过 git tag（`vX.Y.Z`）与 GitHub Release 承载；版本 bump 仍写入 package.json / package-lock.json
 - **release notes 文件不以 `#` 标题开头**：GitHub Release 页会同时显示 --title 与 notes 内容，文件内再写标题会出现版号/内容重复
 - git 身份：仓库级 `git config user.email`（当前 1902283142@qq.com）
 - 只改代码不涉及功能变更的推送（如 README/docs）不需要改版本号
