@@ -1,7 +1,7 @@
 {
   "name": "utools-unotes",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.6.0",
   "type": "module",
   "description": "源笔记：以学习对象为载体，记录要点、快速检索的 uTools 插件",
   "scripts": {
