@@ -26,3 +26,25 @@
 ### Status
 
 [OK] **Completed**
+
+
+## Session 2: Typora 式即时渲染（v1.4.1）
+
+**Date**: 2026-08-14
+**Task**: Typora 式即时渲染（v1.4.1）
+**Branch**: `main`
+
+### Summary
+
+编辑器即时渲染升级为 Typora 式：代码块改为常驻 nested CM6 的独立输入框（闭合围栏 widget 化、无围栏可见、语言下拉改写源码、round-trip 修复空代码块尾换行漂移）；粗体/斜体/删除线/行内码非光标行零宽隐藏（font-size:0 修复拖选断裂）；表格外框内容宽度自适应 + hover 右上角工具条；color-mix 兼容 uTools Chromium 108 内核（--editor-* 双写变量）；新增 smoke:decor-styles 作为 uTools 内核等价验证通道（Chrome 107），59+12+13 项断言全绿；发布 v1.4.1（tag + GitHub Release）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f948532` | (see git log) |
+| `8163327` | (see git log) |
+
+### Status
+
+[OK] **Completed**
