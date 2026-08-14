@@ -34,7 +34,7 @@ const base = process.env.UI_SMOKE_BASE ?? 'http://localhost:5173/'
 const results = []
 const ok = (name, pass) => {
   results.push([name, pass])
-  console.log(`${pass ? '✅' : '❌'} ${name}`)
+  console.log(`${pass ? 'PASS' : 'FAIL'} ${name}`)
 }
 
 const browser = await chromium.launch({ executablePath, headless: true })
@@ -106,12 +106,13 @@ try {
   // 3. 点卡片 → 详情内联编辑器（空正文直接可写）
   await page.getByText('冒烟笔记').first().click()
   await page.locator('.milkdown .ProseMirror').first().waitFor()
-  // 逐行真实输入（Milkdown 输入规则驱动：标题行、列表首项、续行直接输文本）
-  await page.keyboard.type('# 标题')
+  // 逐行真实输入（Milkdown 输入规则驱动：标题行、列表首项、续行直接输文本）；
+  // 延迟注入避免 input rule 竞态（真实用户输入有天然间隔）
+  await page.keyboard.type('# 标题', { delay: 25 })
   await page.keyboard.press('Enter')
-  await page.keyboard.type('- 列表一')
+  await page.keyboard.type('- 列表一', { delay: 25 })
   await page.keyboard.press('Enter')
-  await page.keyboard.type('列表二')
+  await page.keyboard.type('列表二', { delay: 25 })
   await waitFor(() => !!document.querySelector('.milkdown h1') &&
     (document.querySelectorAll('.milkdown .milkdown-list-item-block .label').length ?? 0) >= 1)
   const deco = await page.evaluate(() => {
@@ -124,53 +125,11 @@ try {
   ok('即时渲染：标题样式（Milkdown）', deco.headingStyled)
   ok('即时渲染：无序列表 • 项目符号（Milkdown）', deco.bulletCount >= 1)
 
-  // 3b. 快捷工具栏：点击「勾选框」插入任务列表 → 勾选框可点击切换写回 [x]
-  // 导航到文档尾段落（End 行尾 + ArrowDown 离开列表到 trailing paragraph）
-  await page.keyboard.press('End')
-  await page.keyboard.press('ArrowDown')
-  await page.getByRole('button', { name: '勾选框' }).click()
-  await page.keyboard.type('待办一', { delay: 25 })
-  await page.keyboard.press('Enter') // 回车进入任务列表续行 → 渲染勾选框
-  await waitFor(() => document.querySelectorAll('.milkdown .milkdown-list-item-block .label').length >= 1)
-  const taskCount = await page.evaluate(() => document.querySelectorAll('.milkdown .milkdown-list-item-block .label').length)
-  ok('快捷工具栏：勾选框插入（Milkdown）', taskCount >= 1)
-  await page.locator('.milkdown .milkdown-list-item-block .label.unchecked').first().click()
-  await waitFor((s) => window.__snDebug.getActiveNoteContent().includes(s), 4000, '[x]')
-  ok('AC2：勾选框点击切换写回 [x]',
-    await page.evaluate(() => window.__snDebug.getActiveNoteContent().includes('[x]')))
-  // 退出任务列表：End + ArrowDown 到文档尾段落（后续 3c/3d 需要）
-  await page.keyboard.press('End')
-  await page.keyboard.press('ArrowDown')
-  await page.waitForTimeout(120)
-
-  // 3c. 代码块：工具栏插入 → 渲染（无围栏源码残留）；Ctrl+Enter 退出
-  await page.getByRole('button', { name: '代码块', exact: true }).click()
-  await page.keyboard.type('const editorProbe = true')
-  await page.keyboard.press('Control+Enter') // 退出代码块 → 渲染
-  await waitFor(() => document.querySelectorAll('.milkdown .milkdown-code-block').length >= 1)
-  ok('代码块：插入渲染（Milkdown code-block）',
-    await page.evaluate(() => {
-      const t = document.querySelector('.milkdown .ProseMirror')?.textContent ?? ''
-      return t.includes('const editorProbe = true')
-    }))
-
-  // 3d. 真实表格：插入渲染 + 单元格直编（Milkdown gfm 表格；无右键行列菜单）
-  await page.keyboard.press('Control+End')
-  await page.keyboard.type('\n')
-  await page.getByRole('button', { name: '表格', exact: true }).click()
-  await page.locator('.milkdown table').first().waitFor()
-  ok('表格：插入后出现真实 table（Milkdown）', (await page.locator('.milkdown table').count()) >= 1)
-  // 单元格直编：点首个 body 单元格 → 输入即写回源码
-  await page.locator('.milkdown table tbody tr td').first().click()
-  await page.keyboard.type('单元格编辑')
-  await waitFor(() => document.querySelector('.milkdown table tbody tr td')?.textContent?.includes('单元格编辑'))
-  await waitFor((s) => window.__snDebug.getActiveNoteContent().includes(s), 4000, '单元格编辑')
-  ok('表格：单元格可编辑（WYSIWYG 直编写回源码）',
-    await page.evaluate(() => window.__snDebug.getActiveNoteContent().includes('单元格编辑')))
-
   // 3e. 公式：行内 $...$ KaTeX 渲染 + R11 无斜杠菜单
+  //（勾选框/代码块/表格深度交互见 smoke:editor，此处只冒烟挂载 + 渲染）
   await page.keyboard.press('Control+End')
-  await page.keyboard.type('\n\n行内公式 $x^2$ 结束') // 表格后需空行（否则并入表格行）
+  await page.keyboard.press('Enter') // 列表尾段落 → 新行
+  await page.keyboard.type('行内公式 $x^2$ 结束', { delay: 25 })
   await page.keyboard.press('Enter') // 光标离开公式行 → 渲染
   await waitFor(() => document.querySelectorAll('.milkdown [data-type="math_inline"]').length >= 1)
   ok('AC1：行内公式 KaTeX 渲染（math_inline）',
@@ -181,9 +140,8 @@ try {
     (await page.getByRole('menu').count()) === 0 &&
     (await page.locator('.milkdown-block-handle, [class*="slash"]').count()) === 0)
   await page.keyboard.press('Backspace')
-  await page.keyboard.press('Backspace')
-  // 实时保存：无「保存正文」按钮；防抖 500ms 落盘 → 固定 900ms 余量
-  await page.waitForTimeout(900)
+  // 实时保存：无「保存正文」按钮；等公式落盘（markdownUpdated 200ms + save 500ms 叠加）
+  await waitFor((s) => window.__snDebug.getActiveNoteContent().includes(s), 4000, '行内公式 $x^2$ 结束')
   ok('无保存正文按钮', (await page.getByRole('button', { name: /保存正文/ }).count()) === 0)
 
   // 4. 返回 → 重开笔记：正文已自动落盘（实时保存链路，重开仍在编辑器）
@@ -192,18 +150,10 @@ try {
   await page.getByText('冒烟笔记').first().click()
   await page.locator('.milkdown .ProseMirror').first().waitFor()
   const persistedContent = await page.evaluate(() => window.__snDebug.getActiveNoteContent())
-  const persisted = await page.evaluate(() => ({
-    text: document.querySelector('.milkdown .ProseMirror')?.textContent ?? '',
-    table: document.querySelectorAll('.milkdown table').length,
-    fence: document.querySelectorAll('.milkdown .milkdown-code-block').length,
-    editedCell: [...document.querySelectorAll('.milkdown table td')].some((c) => c.textContent?.includes('单元格编辑')),
-  }))
   ok('实时保存：重开后正文仍在（未手动保存）',
-    persistedContent.includes('列表项一') && persistedContent.includes('待办项'))
-  ok('AC7：round-trip 源文本保留（公式/表格源码原样）',
-    persistedContent.includes('行内公式 $x^2$ 结束') &&
-    persistedContent.includes('| 列1 | 列2 |'))
-  ok('编辑器：代码块/表格状态可持久化', persisted.table >= 1 && persisted.fence >= 1 && persisted.editedCell)
+    persistedContent.includes('列表一') && persistedContent.includes('列表二'))
+  ok('AC7：round-trip 源文本保留（公式源码原样）',
+    persistedContent.includes('行内公式 $x^2$ 结束'))
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.getByRole('tab', { name: '首页' }).click()
   await page.locator('aside').getByText('UI 冒烟测试对象').first().waitFor()
@@ -366,9 +316,11 @@ try {
   ok('进入笔记后对象栏隐藏（无新笔记按钮）',
     (await page.getByRole('button', { name: /新笔记/ }).count()) === 0)
   // 实时保存时代：无「写正文」按钮（已进入编辑态）、无 localStorage 草稿、切走无确认框
-  await page.locator('.milkdown .ProseMirror').first().click()
+  // 编辑器进入时 autoFocus 已聚焦（勿再 click 容器中心——会落到空白区丢失焦点）
   await page.keyboard.type('\n实时保存测试')
-  await page.waitForTimeout(900) // 防抖 500ms 落盘 → 固定 900ms 余量
+  // Milkdown markdownUpdated（200ms 防抖）+ NoteView 保存（500ms 防抖）叠加，
+  // 用条件等待替代固定超时（否则偶发未落盘）
+  await waitFor((s) => window.__snDebug.getActiveNoteContent().includes(s), 8000, '实时保存测试')
   const draftKeys = await page.evaluate(() =>
     Object.keys(localStorage).filter((k) => k.startsWith('sn:draft:')),
   )
@@ -395,7 +347,7 @@ try {
   await page.getByText('空正文草稿').first().click()
   await page.locator('.milkdown .ProseMirror').first().waitFor()
   ok('空正文笔记直接进入编辑器', await page.evaluate(() => !!document.querySelector('.milkdown .ProseMirror')))
-  await page.locator('.milkdown .ProseMirror').first().click()
+  // autoFocus 已聚焦，直接输入（勿 click 容器中心——空文档中心是空白区会失焦）
   await page.keyboard.type('空正文草稿内容')
   await page.waitForTimeout(900) // 防抖 500ms 落盘 → 固定 900ms 余量
   const emptyDraftKeys = await page.evaluate(() =>
