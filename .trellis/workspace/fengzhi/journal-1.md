@@ -48,3 +48,32 @@
 ### Status
 
 [OK] **Completed**
+
+## Session 2: 编辑器核心迁移 Milkdown（CrepeBuilder）
+
+**Date**: 2026-08-14
+**Task**: 08-14-milkdown-editor-migration
+**Branch**: `main`
+
+用 Milkdown 7.22.1（CrepeBuilder 装配）替换 atomic-editor/CM6 自研内核，规避历史否决点（Crepe 块编辑体验）：
+- 只装配 codeMirror/latex/placeholder/listItem，无 slash / block-edit / 拖拽（R11）
+- 自研 ==高亮== / <u> 下划线 mark 插件：remark 转换 + mark schema + 序列化 handlers
+  - 陷阱①：split 空串片段 → Empty text nodes（只读/重开解析时暴露）
+  - 陷阱②：<u> 被 remark 拆成两个 html 节点，需成对合并
+- 公式 $…$/…：math_inline 节点 + LaTeX 代码块预览（Crepe latex feature）
+- MarkdownInsertApi 重写为 ProseMirror 命令（19 项工具栏全迁移）
+- 大纲跳转契约：markdown 源码偏移 → level+text 匹配 heading（WYSIWYG 下偏移失效）
+- 测试注入经验：insertText 的 \n 不成换行、不触发 input rules；快速注入+公式触发
+  Position out of range；Ctrl+Enter（exitCode）退出代码块
+- 验证：smoke:editor 28/28、ui-smoke 14/14、数据层 smoke 全过、typecheck/build 绿
+- 提交：d9dfb6d（含 spec/frontend/editor.md 重写、任务归档工件）
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d9dfb6d` | feat(editor): 迁移 Milkdown (CrepeBuilder) 即时渲染——替换 atomic-editor/CM6 自研内核 |
+
+### Status
+
+[OK] **Completed**

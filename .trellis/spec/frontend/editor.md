@@ -1,112 +1,103 @@
-# Editor Architecture (CodeMirror 6 Live Preview / atomic-editor)
+# Editor Architecture (Milkdown 7.22.1 / CrepeBuilder 即时渲染)
 
-> 编辑器实现契约。历史：Milkdown (Crepe) WYSIWYG 迁移被否决（块编辑体验，
-> 用户要 Typora 式"纯 markdown 的视觉丰富"），已回滚（94cbfec）并落地
-> Obsidian Live Preview 式即时渲染（任务 08-14-editor-ux-rebuild 第二路线）。
+> 编辑器实现契约与历史：Milkdown 曾两次尝试——
+> ① Crepe 完整框架（79a0425，含默认 BlockEdit 块手柄）→ 用户否决「块编辑体验」回滚（94cbfec）；
+> ② 本次（08-14-milkdown-editor-migration，d9dfb6d）用 CrepeBuilder 只装配所需 feature，
+> 明确排除 block-edit/slash/拖拽，满足「纯 markdown 编辑交互 + 即时渲染」。
 
 ## Architecture Overview
 
 ```
-NoteView（保存链路不变：onChange(md) → draft → 500ms 防抖 → updateNote）
-  ├─ MarkdownToolbar（20 项）──→ MarkdownInsertApi（codeMirrorApi 实现，jumpTo=offset）
-  ├─ MetaInfoPanel（大纲：onJump(offset)）
-  └─ AtomicEditor（@atomic-editor/editor 0.6.x，CM6 内核）
-       ├─ atomic 内置：live preview（光标行源码/其余渲染）、表格、任务勾选框、代码围栏高亮、readOnly
-       ├─ mathExtension.ts（自研标准 `$...$`/`$$...$$`，KaTeX）
-       └─ 只读态（归档）：同组件 readOnly（不渲染 MarkdownView）
+NoteView —— 双向链路：onChange(md) → draft → 500ms 防抖 → updateNote；
+  ├── MarkdownToolbar（20 项）→ MarkdownInsertApi（markdownInsertApi 实现，ProseMirror 命令）
+  ├── MetaInfoPanel → 大纲 onJump(OutlineItem)（level+text 匹配标题，非源码偏移）
+  └── MilkdownEditor（CrepeBuilder 装配）：
+       ├── codeMirror feature：代码块（复用 @codemirror/lang-*，CM6 内核）
+       ├── latex feature：$…$/$$…$$ 公式（KaTeX 预览；$$ → code_block lang=LaTeX）
+       ├── placeholder feature + listItem feature（勾选框渲染 + 点击 toggle）
+       ├── 自研 customMarks：==高亮== / <u>下划线</u>（remark 转换 + mark schema + 序列化）
+       ├── 只读：setReadonly（editable=false，勾选框/表格天然不可交互）
+       └── 受控：documentId 变化重建（父组件 key + effect 双保险）
 ```
 
-- 文档模型 = 纯 Markdown 源文本：即时渲染只改视图不改文档，**round-trip 字节级一致**。
-- 无块编辑形态：无斜杠命令、无块手柄（R11 硬约束）。
-- 已删除：CM6 自研装饰（markdownDecorations.ts）、自研表格 widget（markdownBlockWidgets.ts）、
-  MarkdownView 正则渲染器、lib/markdown.ts、@uiw/react-codemirror 壳。
+- 文档模型 = ProseMirror（WYSIWYG），序列化 roundtrip 有语法规范化（如 `$$` 块 → ```latex
+  围栏、列表标记 `-`→`*`、分割线 `---`→`***`），内容不丢（AC 以内容保留为准）
+- 无块编辑形态：无 slash / 无 block-edit 手柄 / 无拖拽（R11 硬约束）
+- 输入规则驱动解析：`# `、`- `、`> `、`---`、`$x$`、`[ ] ` 等逐键触发
+  （整段 insertText/粘贴纯文本不触发 input rules → 按源码显示）
 
-## Component Contract: AtomicEditor
+## Component Contract: MilkdownEditor
 
-File: `src/components/Editor/AtomicEditor.tsx`
+File: `src/components/Editor/MilkdownEditor.tsx`
 
 ```tsx
-interface AtomicEditorProps {
-  value: string            // 受控 markdown；外部变化（切笔记）→ handle 重写
+interface MilkdownEditorProps {
+  value: string            // 受控 markdown（外部变化仅切笔记/草稿重置触发）
   onChange(value: string)
-  onSave?: () => void      // Ctrl/Cmd+S（编辑器内焦点）
+  onSave?: () => void      // Ctrl/Cmd+S（编辑器内焦点；表单 window 监听兜底）
   placeholder?: string
   autoFocus?: boolean
-  readonly?: boolean       // 归档只读：readOnly + transactionFilter 拦截一切 doc 改动
+  readonly?: boolean       // 归档只读（CrepeBuilder setReadonly）
   className?: string
+  documentId: string       // 文档身份：变化时重建（光标/undo 不串笔记）
 }
 ```
 
-- 受控 value 同步：切笔记走 `documentId` remount 或 handle 重写，避免光标/历史残留。
-- **归档只读不可变性**：atomic 原生 readOnly 仍允许勾选任务框 → 产品要求"归档不可变"，
-  用 transactionFilter 拦截勾选框改动（已实现，勿回退）。
-- editorHandle 逃生口：`EditorView.findFromDOM(handle.getContentDOM())` 取 view 实现工具栏 API。
+- 装配：CrepeBuilder 已内置 commonmark/gfm/listener/history/indent/trailing/clipboard/upload；
+  `builder.editor.config(...).use(...)` 追加自研插件（customMarks、Mod-s keymap）
+- **feature 顺序敏感**：latex feature 强制要求 CodeMirror flag（`useCrepeFeatures` 检查），
+  必须先 addFeature(codeMirror) 再 addFeature(latex)
+- 受控回写：`listener.markdownUpdated`（200ms 防抖于框架内）→ onChange；
+  value 兜底 effect 需等 create() 完成（editorViewCtx 就绪）后再 getMarkdown 对比，否则崩溃
 
-### MarkdownInsertApi（codeMirrorApi.ts，工具栏契约）
+### MarkdownInsertApi（markdownInsertApi.ts）——ProseMirror 命令实现
 
 ```ts
 interface MarkdownInsertApi {
-  wrap(before, after?, placeholder?): void   // 选中包裹（markdown 文本）
-  block(prefix, suffix?, opts?): void        // 行级命令 / 块级插入（公式块 $$、围栏、表格模板、hr）
-  insertImage(path: string): void
-  jumpTo(offset: number): void               // CM6 文档偏移定位（滚动 + 光标）
+  wrap(before, after?, placeholder?): void   // toggleMark / 链接 / math_inline 插入
+  block(prefix, suffix?, opts?): void        // setBlockType / wrapInList / wrapInBlockquote / 节点插入
+  insertImage(path: string): void            // image 节点（alt=文件名去扩展）
+  jumpTo(item: OutlineItem): void            // level+text 匹配 heading 节点定位（非偏移）
   focus(): void
 }
 ```
 
-## mathExtension.ts（自研标准公式，独立可替换）
+- wrap 的 before → mark 名映射：`**`→strong、`*`→em、`~~`→strike_through、`` ` ``→inline_code、
+  `==`→highlight、`<u>`→underline、`[`→link、`$`→math_inline 节点
+- 节点名注意：分割线是 `hr` 不是 `horizontal_rule`；公式块 = code_block + language 'LaTeX'
+- 所有命令经 `editor.action(ctx => view...)` 且检查 `view.editable`（只读态 no-op）
 
-- **语法**：行内 `$x$`、块级 `$$x$$`（单行）与 `$$\n...\n$$`（多行）。
-- 实现：lezer markdown 扩展 + StateField 装饰（**CM6 规则：block 装饰必须来自 StateField，
-  ViewPlugin 会抛 "Block decorations may not be specified via plugins"**）。
-- 语法边界（正则在 lezer Paragraph/ATXHeading* 内扫描，排除 InlineCode/Link/Image 区间）：
-  - 开 `$` 非转义、后非空白非 `$`；闭 `$` 前非空白；内容无 `$`/换行且非空
-  - 未闭合 `$`、`a $ b`、`$ a$`、`$a $` 均不渲染；`$$` 双美元互斥回退源码
-- 光标行揭示：selection 覆盖的行/块显示源码；readOnly 恒渲染不揭示。
-- 点击渲染结果 → mousedown preventDefault + selection 移入源码。
+## customMarks.ts（==高亮== / <u>下划线</u>）——自研扩展 mark
 
-### 块 widget 高度契约（重要，勿破坏）
+- 解析：`$remark` 转换插件（unist-util-visit）——text 节点 `==x==` 拆 highlight 节点；
+  **`<u>` 被 remark-parse 拆成两个 html 节点**（`<u>` + `</u>`），需在 parent.children 中
+  成对查找合并为 underline 节点
+- **陷阱：`'==x=='.split(/(==[^=]+==)/g)` 产出空串片段，必须 filter 掉**——
+  空 text 节点导致 ProseMirror 解析报错 `Empty text nodes are not allowed`（编辑态输入走
+  input rule 不触发，只在重开/只读解析时暴露）
+- 序列化：remarkStringifyOptionsCtx 的 handlers（mdast-util-to-markdown 2.x 的 State 无
+  `all()`，用 `containerPhrasing(node, info)`）输出 `==x==` / `<u>x</u>`
+- 编辑：toggleMark 命令 + 输入规则（`==x==`、`<u>x</u>` 自动激活）
 
-KaTeX `.katex-display` 自带 `1em` margin → 块 widget 盒外间距导致 heightmap 与 DOM 坐标
-差 16px → 块下方方向键/点击 Y→位置映射错位。已修复并固化：
-- `.cm-math-block`：flex 居中 + margin 清零 + `min-height: N × 行高`（多行块替换 N 行时）
+## 公式（latex feature）
+
+- 行内 `$x$` → math_inline 节点（input rule 触发）；`$$` + Enter → code_block lang=LaTeX
+  （数学块 = 代码块 + LaTeX 语言 + renderPreview 预览，非独立节点）
+- 光标进入公式节点显示源码（Typora 式）；代码块退出用 **Ctrl+Enter（exitCode）**，
+  ArrowDown 在 CM6 块内行为不稳定
+- 代码块组件渲染预览的条件：selection 离开块（挂载后组件 watch [text, language] immediate
+  计算预览内容；编辑态 CM 编辑器 + 预览面板并存）
 
 ## 主题
 
-`--atomic-editor-*`（~30 个 CSS 变量）在编辑器容器祖先映射项目 Tailwind 色板
-（--background/--foreground/--muted 等），`.dark` 作用域覆盖。见 `atomicTheme.css`。
+`--crepe-color-*`（官方 classic 主题变量）→ 项目 token 映射（milkdownTheme.css），
+`.dark` 作用域覆盖，Chromium 108 兼容（rgba 先行 + color-mix 覆盖）。
 
-## 代码块语言（R4 现状）
+## 已知限制（测试与输入注入相关）
 
-- atomic 围栏渲染 + 语法高亮（内置 5 语言：js/ts/css/html/md）。
-- 语言切换 = 光标行源码编辑围栏语言标签（**无浮层**，D4 最小方案；AC4 按此口径）。
-- 注意：`codeLanguages` 只传已装语言包；`ATOMIC_CODE_LANGUAGES` 含未装包会 build 失败。
-  加语言需同步安装 `@codemirror/lang-*`。
-
-## Gotchas
-
-> **block widget 垂直导航**：公式块上方方向键会"停靠"到块起点（CM6 block-widget 固有行为，
-> atomic 表格同理）——无错位，可接受；如后续优化可自定义 moveVertically。
-
-> **KaTeX 字体裁剪**：vite.config.ts 的 `katexWoff2Only` 插件构建期剔除 woff/ttf 引用，
-> 只留 woff2（1.02MB → 0.24MB）。换 KaTeX 版本时确认插件仍生效。
-
-> **playwright 测试**：打开笔记用 `dispatchEvent('click')`（dev 环境偶发 hit-test 拦截，
-> 与产品逻辑无关）；编辑器断言选择器：`.cm-content`（编辑区）、`.cm-math-inline`/`.cm-math-block`
-> （公式）、`.cm-atomic-task-checkbox`（勾选框）、`.cm-atomic-blockquote`、`.cm-atomic-hr`。
-
-## Tests
-
-- `npm run smoke:editor` — 编辑器专项（28 断言：公式/光标行源码/语法边界/勾选框/引用/分割线/
-  围栏/工具栏 20 项/图片/大纲 offset/Ctrl+S/round-trip 字节一致/深色/长文档 600 行）。
-- `npm run ui-smoke` — 全流程（60 断言，含公式渲染与 R11 无斜杠/块手柄）。
-- 其余：smoke/smoke:stores/smoke:outline/smoke:tableModel/smoke:tableOps。
-- 体积基线（2026-08-14）：dist 解压 1.68 MB / zip 0.69 MB。
-
-## 决策记录
-
-- **为什么不是 Milkdown/Crepe**：ProseMirror 块结构改变 markdown 逻辑（`#` 被吃掉、
-  斜杠/块手柄），用户否决；CM6 live preview 是"纯源码 + 视图装饰"，满足"对纯 markdown 的丰富"。
-- **为什么用 atomic-editor 而非自研装饰**：成熟实现（50+ Playwright 回归、生产实盘），
-  math 缺失用自研小扩展补齐（无标准 `$` 语法的现成包；live-markdown 仅 Obsidian 语法）。
-- **版本锁定**：`@atomic-editor/editor` 精确版本（0.6.x API 尚在演进）。
+- Playwright `keyboard.insertText` 整段注入：\n 不产生换行（成 hardbreak）、不触发 input
+  rules（`- ` 列表等不转换）——smoke 用逐行 insertText + Enter 或逐字符 type
+- 快速 insertText 含公式行（`$x_i$`）+ input rule 组合触发 ProseMirror
+  `Position out of range`（真实逐字输入无此问题）——长文档 smoke 行内不含公式
+- task 勾选框选择器：`.milkdown-list-item-block .label`（.unchecked/.checked 区分状态），
+  组件 DOM 无 data-item-type 属性
