@@ -88,7 +88,7 @@ try {
   // 2. 新建笔记：Dialog 小窗（仅标题+标签，无正文编辑器），保存后回列表
   await page.getByRole('button', { name: /新笔记/ }).first().click()
   await page.getByLabel('标题').fill('冒烟笔记')
-  const hasBodyEditor = await page.evaluate(() => !!document.querySelector('.milkdown'))
+  const hasBodyEditor = await page.evaluate(() => !!document.querySelector('.cm-content'))
   ok('新建笔记无正文编辑器（快速创建）', !hasBodyEditor)
   // AC9：标签联想（点击输入框 → 输入字符 → 弹层出现，含「创建标签」候选）
   const tagInput = page.locator('input[placeholder*="输入标签名"]')
@@ -103,53 +103,98 @@ try {
   await page.getByText('冒烟笔记').first().waitFor()
   ok('笔记卡片出现', (await page.evaluate(() => document.body.innerText)).includes('冒烟笔记'))
 
-  // 3. 点卡片 → 详情 WYSIWYG 编辑器（Milkdown/Crepe，空正文直接可写）
-  //    dispatchEvent 派发 click（规避 dev 环境偶发 hit-test 拦截）
-  await page.locator('[role="button"]', { hasText: '冒烟笔记' }).first().dispatchEvent('click')
-  await page.locator('.milkdown .ProseMirror').first().waitFor({ timeout: 10000 })
-  await page.locator('.milkdown .ProseMirror').first().click()
+  // 3. 点卡片 → 详情内联编辑器（空正文直接可写）
+  await page.getByText('冒烟笔记').first().click()
+  await page.locator('.cm-content').first().waitFor()
+  await page.locator('.cm-content').first().click()
   await page.keyboard.type('# 标题\n- 列表项一\n- 列表项二')
-  await waitFor(() => !!document.querySelector('.milkdown h1') &&
-    (document.querySelectorAll('.milkdown li').length ?? 0) >= 2)
-  ok('WYSIWYG：标题 h1 渲染', (await page.locator('.milkdown h1').count()) >= 1)
-  ok('WYSIWYG：无序列表渲染', (await page.locator('.milkdown li').count()) >= 2)
+  await waitFor(() => !!document.querySelector('.sn-md-h1') &&
+    (document.querySelectorAll('.sn-list-bullet').length ?? 0) >= 2)
+  const deco = await page.evaluate(() => {
+    const cm = document.querySelector('.cm-content')
+    return {
+      bulletCount: cm?.querySelectorAll('.sn-list-bullet').length ?? 0,
+      headingStyled: !!cm?.querySelector('.cm-line .sn-md-h1'),
+    }
+  })
+  ok('即时渲染：标题样式装饰', deco.headingStyled)
+  ok('即时渲染：无序列表 • 项目符号', deco.bulletCount >= 2)
 
   // 3b. 快捷工具栏：点击「勾选框」插入任务列表
   await page.keyboard.press('Enter')
   await page.getByRole('button', { name: '勾选框' }).click()
   await page.keyboard.type('待办项')
-  await waitFor(() => document.querySelectorAll('.milkdown-list-item-block .label').length >= 1)
-  ok('快捷工具栏：勾选框插入', (await page.locator('.milkdown-list-item-block .label').count()) >= 1)
+  await waitFor(() => document.querySelectorAll('.sn-task-box').length >= 1)
+  const taskCount = await page.evaluate(() => document.querySelectorAll('.sn-task-box').length)
+  ok('快捷工具栏：勾选框插入', taskCount >= 1)
 
-  // 3c. 代码块：Typora 式独立输入区（Crepe code-block，语言选择器为浮层按钮）
-  await page.keyboard.press('Enter')
+  // 3c. 代码块：Typora 式独立输入框（nested editor 连续输入、无围栏可见、语言切换改写源码）
   await page.getByRole('button', { name: '代码块', exact: true }).click()
-  await page.locator('.milkdown-code-block').last().waitFor()
-  await page.locator('.milkdown-code-block .cm-content').first().click()
+  await page.locator('.sn-md-codeblock-widget').last().waitFor()
+  await waitFor(() => !!document.querySelector('.sn-md-codeblock-widget .cm-content:focus'))
   await page.keyboard.type('const editorProbe = true')
-  await waitFor(() => document.querySelector('.milkdown-code-block')?.textContent?.includes('const editorProbe = true'))
-  ok('代码块：插入后出现独立输入区', (await page.locator('.milkdown-code-block').count()) >= 1)
-  ok('代码块：连续输入同步（无围栏可见）',
+  await waitFor(() => document.querySelector('.cm-content')?.textContent?.includes('const editorProbe = true'))
+  ok('代码块：插入后出现独立输入框并自动聚焦', true)
+  ok('代码块：连续输入同步源码且无围栏可见',
     await page.evaluate(() => {
-      const block = document.querySelector('.milkdown-code-block')
-      return !!block && !(block.innerText ?? '').includes('```')
+      const widget = document.querySelector('.sn-md-codeblock-widget')
+      return !!widget && !(widget.innerText ?? '').includes('```')
     }))
-  const langBtn = page.locator('.milkdown-code-block .language-button').last()
-  await langBtn.click()
-  await page.locator('.milkdown-code-block input[placeholder*="Search"]').last().waitFor({ timeout: 3000 }).catch(() => {})
-  ok('代码块：语言选择器浮层可展开', (await page.locator('.milkdown-code-block input[placeholder*="Search"]').count()) >= 1)
-  await page.keyboard.press('Escape')
+  const codePicker = page.locator('.sn-md-codeblock-widget .sn-lang-picker').last()
+  await codePicker.selectOption('python')
+  // 语言切换 → 改写围栏源码 → widget 重建后 select 值应保持 python
+  // （若源码未改，updateDOM 会按 model.lang 把 select 重置回原语言）
+  await waitFor(() => document.querySelector('.sn-md-codeblock-widget .sn-lang-picker')?.value === 'python')
+  await page.waitForTimeout(300)
+  ok('代码块：语言选择器可切换（改写围栏源码）',
+    (await page.locator('.sn-md-codeblock-widget .sn-lang-picker').last().inputValue()) === 'python')
 
-  // 3d. 表格：Crepe GFM 表格（直接编辑单元格）
-  await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('Enter')
+  // 3d. 真实表格：单元格编辑 + 增删结构
   await page.getByRole('button', { name: '表格', exact: true }).click()
-  await page.locator('.milkdown table').last().waitFor()
-  ok('表格：插入后出现真实 table', (await page.locator('.milkdown table').count()) >= 1)
-  await page.locator('.milkdown table td').first().click()
+  await page.locator('.sn-md-table-widget table').last().waitFor()
+  ok('表格：插入后出现真实 table', (await page.locator('.sn-md-table-widget table').count()) >= 1)
+  await page.locator('.sn-md-table-cell[data-cell-section="body"]').first().click()
+  await page.locator('.sn-md-table-cell-editor .cm-content').waitFor()
   await page.keyboard.type('单元格编辑')
-  await waitFor(() => document.querySelector('.milkdown table td')?.textContent?.includes('单元格编辑'))
-  ok('表格：单元格可直接编辑', true)
+  await page.keyboard.press('Tab')
+  await waitFor(() => document.querySelector('.sn-md-table-cell-editor')?.closest('[data-cell-key]')?.getAttribute('data-cell-key') === 'body:0:1')
+  ok('表格：Tab 移动到下一单元格', true)
+  await page.keyboard.press('Shift+Tab')
+  await waitFor(() => document.querySelector('.sn-md-table-cell-editor')?.closest('[data-cell-key]')?.getAttribute('data-cell-key') === 'body:0:0')
+  ok('表格：Shift+Tab 返回上一单元格', true)
+  await page.keyboard.press('Tab')
+  await waitFor(() => document.querySelector('.sn-md-table-cell-editor')?.closest('[data-cell-key]')?.getAttribute('data-cell-key') === 'body:0:1')
+  await page.keyboard.press('Enter')
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget tbody tr').length >= 2)
+  await waitFor(() => document.querySelector('.sn-md-table-cell-editor')?.closest('[data-cell-key]')?.getAttribute('data-cell-key') === 'body:1:1')
+  ok('表格：Enter 新增行并下移', true)
+  // 工具条 hover 悬浮：每次点击行列按钮前先 hover 表格（08-14 交互改造；
+  // 结构变化会改变表格宽度，hover 位置可能落到表格外导致工具条消失）
+  const clickTableBtn = async (name) => {
+    await page.locator('.sn-md-table-widget').last().hover()
+    await page.getByRole('button', { name, exact: true }).last().click()
+  }
+  await clickTableBtn('＋行')
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget tbody tr').length >= 3)
+  await clickTableBtn('＋列')
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget thead th').length >= 3)
+  const tableProbe = await page.evaluate(() => ({
+    headers: document.querySelectorAll('.sn-md-table-widget thead th').length,
+    rows: document.querySelectorAll('.sn-md-table-widget tbody tr').length,
+    hasEditedCell: [...document.querySelectorAll('.sn-md-table-cell')].some((cell) => cell.textContent?.includes('单元格编辑')),
+  }))
+  ok('表格：单元格可编辑', tableProbe.hasEditedCell)
+  ok('表格：可新增行列', tableProbe.headers >= 3 && tableProbe.rows >= 2)
+  await clickTableBtn('－列')
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget thead th').length === 2)
+  await clickTableBtn('－行')
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget tbody tr').length === 2)
+  ok('表格：可删除行列', true)
+  await page.keyboard.press('Control+z')
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget tbody tr').length === 3)
+  await page.keyboard.press('Control+z')
+  await waitFor(() => document.querySelectorAll('.sn-md-table-widget thead th').length === 3)
+  ok('表格：结构操作支持撤销', true)
   // 实时保存：无「保存正文」按钮；防抖 500ms 落盘 → 固定 900ms 余量
   await page.waitForTimeout(900)
   ok('无保存正文按钮', (await page.getByRole('button', { name: /保存正文/ }).count()) === 0)
@@ -157,13 +202,13 @@ try {
   // 4. 返回 → 重开笔记：正文已自动落盘（实时保存链路，重开仍在编辑器）
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.getByText('冒烟笔记').first().waitFor()
-  await page.locator('[role="button"]', { hasText: '冒烟笔记' }).first().dispatchEvent('click')
-  await page.locator('.milkdown .ProseMirror').first().waitFor({ timeout: 10000 })
+  await page.getByText('冒烟笔记').first().click()
+  await page.locator('.cm-content').first().waitFor()
   const persisted = await page.evaluate(() => ({
-    text: document.querySelector('.milkdown')?.textContent ?? '',
-    table: document.querySelectorAll('.milkdown table').length,
-    code: document.querySelectorAll('.milkdown-code-block').length,
-    editedCell: [...document.querySelectorAll('.milkdown table td')].some((cell) => cell.textContent?.includes('单元格编辑')),
+    text: document.querySelector('.cm-content')?.textContent ?? '',
+    table: document.querySelectorAll('.sn-md-table-widget table').length,
+    code: document.querySelectorAll('.sn-md-codeblock-widget').length,
+    editedCell: [...document.querySelectorAll('.sn-md-table-cell')].some((cell) => cell.textContent?.includes('单元格编辑')),
   }))
   ok('实时保存：重开后正文仍在（未手动保存）',
     persisted.text.includes('列表项一') && persisted.text.includes('待办项'))
@@ -223,12 +268,9 @@ try {
   await waitForText('已归档（只读）')
   const archivedNote = await page.evaluate(() => document.body.innerText)
   const readOnlyNoEditor = await page.evaluate(
-    () => {
-      const pm = document.querySelector('.milkdown .ProseMirror')
-      return !pm || pm.getAttribute('contenteditable') === 'false'
-    },
+    () => document.querySelectorAll('.cm-content').length === 0,
   )
-  ok('归档笔记只读 NoteView（Crepe readonly）', archivedNote.includes('已归档（只读）') && readOnlyNoEditor)
+  ok('归档笔记只读 NoteView（无编辑器）', archivedNote.includes('已归档（只读）') && readOnlyNoEditor)
   // 归档视图对象行右键 = 恢复/删除
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.locator('aside').getByText('UI 冒烟测试对象').first().click({ button: 'right' })
@@ -316,7 +358,7 @@ try {
   await page.locator('aside').getByText('UI 冒烟测试对象').first().click()
   await page.getByText('冒烟笔记').first().waitFor()
   await page.getByText('冒烟笔记').first().click()
-  await page.locator('.milkdown .ProseMirror').first().waitFor()
+  await page.locator('.cm-content').first().waitFor()
   // AC9：NoteView 顶栏（返回按钮所在行）无对象名，只有笔记自身信息
   const noteHeaderText = await page
     .getByRole('button', { name: /返回/ })
@@ -329,7 +371,7 @@ try {
   ok('进入笔记后对象栏隐藏（无新笔记按钮）',
     (await page.getByRole('button', { name: /新笔记/ }).count()) === 0)
   // 实时保存时代：无「写正文」按钮（已进入编辑态）、无 localStorage 草稿、切走无确认框
-  await page.locator('.milkdown .ProseMirror').first().click()
+  await page.locator('.cm-content').first().click()
   await page.keyboard.type('\n实时保存测试')
   await page.waitForTimeout(900) // 防抖 500ms 落盘 → 固定 900ms 余量
   const draftKeys = await page.evaluate(() =>
@@ -342,9 +384,9 @@ try {
   ok('实时保存：切走无确认框', (await page.getByRole('alertdialog').count()) === 0)
   // 重进笔记：正文已自动落盘（持久化验证）
   await page.getByText('冒烟笔记').first().click()
-  await page.locator('.milkdown .ProseMirror').first().waitFor()
+  await page.locator('.cm-content').first().waitFor()
   const reenterText = await page.evaluate(
-    () => document.querySelector('.milkdown')?.textContent ?? '',
+    () => document.querySelector('.cm-content')?.textContent ?? '',
   )
   ok('实时保存：重进正文仍在（未手动保存）', reenterText.includes('实时保存测试'))
 
@@ -356,9 +398,9 @@ try {
   await page.getByRole('button', { name: '保存' }).click()
   await page.getByText('空正文草稿').first().waitFor()
   await page.getByText('空正文草稿').first().click()
-  await page.locator('.milkdown .ProseMirror').first().waitFor()
-  ok('空正文笔记直接进入编辑器', await page.evaluate(() => !!document.querySelector('.milkdown')))
-  await page.locator('.milkdown .ProseMirror').first().click()
+  await page.locator('.cm-content').first().waitFor()
+  ok('空正文笔记直接进入编辑器', await page.evaluate(() => !!document.querySelector('.cm-content')))
+  await page.locator('.cm-content').first().click()
   await page.keyboard.type('空正文草稿内容')
   await page.waitForTimeout(900) // 防抖 500ms 落盘 → 固定 900ms 余量
   const emptyDraftKeys = await page.evaluate(() =>
@@ -392,5 +434,3 @@ if (errors.length) {
   console.log(`\nUI 冒烟：${results.filter((r) => r[1]).length}/${results.length} 通过，无渲染错误`)
 }
 await browser.close()
-
-

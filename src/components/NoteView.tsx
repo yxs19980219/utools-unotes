@@ -6,7 +6,7 @@
  * - 正文实时保存：停止输入 300ms 防抖自动落盘（updateNote）；成功静默、失败 toast
  * - 无手动保存按钮、无底部操作栏、无未保存确认（DirtyGuard 已整体删除）
  * - Ctrl+S 立即 flush（清防抖定时器 + 立即保存）
- * - 归档笔记只读（Crepe readonly，渲染一致），无编辑入口
+ * - 归档笔记只读（MarkdownView），无编辑入口
  * - 标签 + 更新时间元信息行在工具行下方共用展示（编辑/只读均可见）
  *
  * 并发正确性（design.md 3.2）：savingRef 串行化 + 成功后的追平循环——
@@ -16,18 +16,19 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeftIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
-import MilkdownEditor from '@/components/Editor/MilkdownEditor'
-import type { MarkdownInsertApi } from '@/components/Editor/markdownInsertApi'
+import CodeMirrorEditor, { type MarkdownInsertApi } from '@/components/Editor/CodeMirrorEditor'
 import MarkdownToolbar from '@/components/Editor/MarkdownToolbar'
-import MetaInfoPanel from '@/components/MetaInfoPanel'
+import MarkdownView from '@/components/MarkdownView'
 import TagChip from '@/components/TagChip'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { useNotesStore } from '@/stores/notes'
 import { useObjectsStore } from '@/stores/objects'
 import { useTagsStore } from '@/stores/tags'
 import { useUiStore } from '@/stores/ui'
+import MetaInfoPanel from '@/components/MetaInfoPanel'
 
 /** 实时保存防抖（ms）：打字停顿间隙不写盘，500ms 平衡实时性与写盘频率（本地 db 几乎不会出错，无需失败重试） */
 const SAVE_DEBOUNCE_MS = 500
@@ -122,10 +123,10 @@ export default function NoteView({ noteId }: { noteId: string }) {
   // 编辑器插入 API（state 驱动：ref 变化不触发渲染，工具栏需要实时拿到实例）
   const [editorApi, setEditorApi] = useState<MarkdownInsertApi | null>(null)
 
-  /** 大纲跳转：编辑器定位到大纲第 index 项标题（滚动 + 光标） */
+  /** 大纲跳转：编辑器定位到标题偏移（滚动 + 光标） */
   const handleJump = useCallback(
-    (index: number) => {
-      editorApi?.jumpTo(index)
+    (offset: number) => {
+      editorApi?.jumpTo(offset)
     },
     [editorApi],
   )
@@ -178,7 +179,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
             <MetaInfoPanel note={note} onJump={handleJump} className="ml-auto" />
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            <MilkdownEditor
+            <CodeMirrorEditor
               ref={setEditorApi}
               value={draft}
               onChange={handleChange}
@@ -189,11 +190,11 @@ export default function NoteView({ noteId }: { noteId: string }) {
           </div>
         </>
       ) : (
-        <div className="min-h-0 flex-1 overflow-hidden">
-          {note.content ? (
-            <MilkdownEditor readonly value={note.content} onChange={() => {}} />
-          ) : (
-            <div className="flex h-full items-center justify-center">
+        <ScrollArea className="min-h-0 flex-1">
+          <article className="flex flex-col gap-3 p-4">
+            {note.content ? (
+              <MarkdownView content={note.content} />
+            ) : (
               <Empty className="gap-2">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
@@ -202,9 +203,9 @@ export default function NoteView({ noteId }: { noteId: string }) {
                   <EmptyTitle>暂无正文</EmptyTitle>
                 </EmptyHeader>
               </Empty>
-            </div>
-          )}
-        </div>
+            )}
+          </article>
+        </ScrollArea>
       )}
     </div>
   )
@@ -218,4 +219,3 @@ const EMPTY_API: MarkdownInsertApi = {
   jumpTo: () => {},
   focus: () => {},
 }
-
