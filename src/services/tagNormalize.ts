@@ -36,12 +36,13 @@ export function findTagConflicts(
 ): Tag[] {
   const others = allTags.filter((t) => t._id !== tagId)
   if (others.length === 0) return []
-  const values = [name, ...aliases]
-    .map((v) => v.trim().toLowerCase())
-    .filter(Boolean)
+  const values = [name, ...aliases].flatMap((v) => {
+    const t = v.trim().toLowerCase()
+    return t ? [t] : []
+  })
   return others.filter((t) => {
-    const mine = [t.name, ...t.aliases].map((v) => v.trim().toLowerCase())
-    return values.some((v) => mine.includes(v))
+    const mine = new Set([t.name, ...t.aliases].map((v) => v.trim().toLowerCase()))
+    return values.some((v) => mine.has(v))
   })
 }
 
@@ -71,20 +72,6 @@ export function buildTagId(name: string, existingTags: Tag[]): string {
   return id
 }
 
-/** 单文本归并：命中返回既有标签，未命中新建并返回 */
-export async function normalizeTag(
-  input: string,
-  existingTags?: Tag[],
-): Promise<{ tag: Tag; created: boolean }> {
-  const text = input.trim()
-  if (!text) throw new Error('标签不能为空')
-  const tags = existingTags ?? (await listTags())
-  const matched = matchTag(text, tags)
-  if (matched) return { tag: matched, created: false }
-  const tag = await createTag({ id: buildTagId(text, tags), name: text })
-  return { tag, created: true }
-}
-
 /**
  * 批量归并：输入文本列表 → canonical tagId 列表（去重）。
  * 注意：同一批内后出现的输入也能归并到本批刚创建的标签（tags 实时追加）。
@@ -95,6 +82,7 @@ export async function normalizeTags(
 ): Promise<string[]> {
   const tags = [...(existingTags ?? (await listTags()))]
   const ids: string[] = []
+  const seen = new Set<string>()
   for (const raw of inputs) {
     const text = raw.trim()
     if (!text) continue
@@ -102,7 +90,10 @@ export async function normalizeTags(
     const tag: Tag =
       matched ?? (await createTag({ id: buildTagId(text, tags), name: text }))
     if (tag !== matched) tags.push(tag)
-    if (!ids.includes(tag._id)) ids.push(tag._id)
+    if (!seen.has(tag._id)) {
+      seen.add(tag._id)
+      ids.push(tag._id)
+    }
   }
   return ids
 }

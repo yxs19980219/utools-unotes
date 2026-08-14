@@ -60,7 +60,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
   // draft 初始值即新笔记 content，无需此处重置 effect（design 08-14-editor-cm6-research D2）
 
   /** 实时保存（防抖到点 / Ctrl+S / 卸载 flush 共用） */
-  async function save() {
+  const save = useCallback(async () => {
     saveTimerRef.current = null
     if (savingRef.current) return // 保存中：本次跳过，由完成后的追平检查兜住
     const latest = useNotesStore.getState().getById(noteId)
@@ -79,7 +79,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
     }
     // 成功且保存期间又有新输入 → 立即追平（循环直至无新输入）
     if (ok && draftRef.current !== content) void save()
-  }
+  }, [noteId, updateNote])
 
   /** 输入：更新草稿 + 重置防抖定时器（useCallback 稳定引用：避免 @uiw 无谓 reconfigure） */
   const handleChange = useCallback((value: string) => {
@@ -87,7 +87,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
     setDraft(value)
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
     saveTimerRef.current = window.setTimeout(() => void save(), SAVE_DEBOUNCE_MS)
-  }, [])
+  }, [save])
 
   /** Ctrl+S：清防抖定时器 + 立即保存（稳定引用） */
   const handleSave = useCallback(() => {
@@ -96,7 +96,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
       saveTimerRef.current = null
     }
     void save()
-  }, [])
+  }, [save])
 
   /** 卸载：清防抖；若有未落盘改动立即 flush（fire-and-forget，路由切换无确认） */
   useEffect(() => {

@@ -84,7 +84,11 @@ function NoteCard({ note, object, tagById, sourceLabel, crossObject }: NoteCardP
       tabIndex={0}
       onClick={() => openNote(note._id)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') openNote(note._id)
+        if (e.key !== 'Enter' && e.key !== ' ') return
+        // 嵌套按钮（编辑/删除）自行处理 Enter/Space，避免冒泡重复打开笔记
+        if (e.target !== e.currentTarget) return
+        e.preventDefault()
+        openNote(note._id)
       }}
       className="group flex cursor-pointer flex-col gap-1 rounded-lg border border-transparent bg-muted p-2.5 hover:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:border-border dark:bg-card dark:hover:bg-accent/50"
     >

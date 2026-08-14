@@ -94,13 +94,28 @@ export const useTagsStore = create<TagsState>()((set, get) => ({
   },
 
   resolveTagIds: async (texts) => {
+    // 逐项归并（与 normalizeTags 同语义）：name 精确命中既有 name/aliases 归并，
+    // 未命中则创建；同一批内后续输入能归并到本批刚创建的标签（tags 实时追加）。
+    // 顺序执行是语义要求（每次 matchTag 须看到前一次新建的标签），非可并行循环。
+    const tags = [...get().tags]
     const ids: string[] = []
+    const seen = new Set<string>()
+    let created = false
     for (const raw of texts) {
       const name = raw.trim()
       if (!name) continue
-      const tag = await get().create({ name })
-      if (!ids.includes(tag._id)) ids.push(tag._id)
+      const matched = matchTag(name, tags)
+      const tag = matched ?? (await dbCreateTag({ id: buildTagId(name, tags), name }))
+      if (tag !== matched) {
+        tags.push(tag)
+        created = true
+      }
+      if (!seen.has(tag._id)) {
+        seen.add(tag._id)
+        ids.push(tag._id)
+      }
     }
+    if (created) set({ tags })
     return ids
   },
 }))

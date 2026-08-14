@@ -144,15 +144,22 @@ const AtomicEditor = memo(
     },
     ref,
   ) {
-    // 回调 ref：扩展装配于挂载时，回调永远取最新闭包
+    // 回调 ref：keymap/updateListener 在事件阶段读取最新回调。
+    // 于 effect 阶段同步（而非 render 期间 mutate ref），避免并发渲染下泄漏未提交的 render 值。
     const saveRef = useRef(onSave)
-    saveRef.current = onSave
     const onChangeRef = useRef(onChange)
-    onChangeRef.current = onChange
+    useEffect(() => {
+      saveRef.current = onSave
+      onChangeRef.current = onChange
+    })
 
     const rootRef = useRef<HTMLDivElement | null>(null)
     const viewRef = useRef<EditorView | null>(null)
-    const readOnlyCompartmentRef = useRef(new Compartment())
+    // Compartment 惰性初始化（guard 写 ref 为 React 官方 lazy-init 模式，避免每次 render 重建）
+    const readOnlyCompartmentRef = useRef<Compartment | null>(null)
+    if (readOnlyCompartmentRef.current === null) {
+      readOnlyCompartmentRef.current = new Compartment()
+    }
 
     // api 提前到 effect 之前：keymap（Mod-b/i/u）需在扩展装配时引用 toggleInline，
     // 而 api 只依赖 viewRef（useRef 稳定），位置不影响语义
@@ -241,7 +248,7 @@ const AtomicEditor = memo(
               ]),
             ),
             Prec.high(keymap.of([{ key: 'Enter', run: exitBlockquoteOnEnter }])),
-            readOnlyCompartmentRef.current.of(readOnlyExtension(readOnly)),
+            readOnlyCompartmentRef.current!.of(readOnlyExtension(readOnly)),
             EditorView.updateListener.of((update) => {
               if (!update.docChanged) return
               onChangeRef.current(update.state.doc.toString())
@@ -264,7 +271,7 @@ const AtomicEditor = memo(
       const view = viewRef.current
       if (!view) return
       view.dispatch({
-        effects: readOnlyCompartmentRef.current.reconfigure(readOnlyExtension(readOnly)),
+        effects: readOnlyCompartmentRef.current!.reconfigure(readOnlyExtension(readOnly)),
       })
     }, [readOnly])
 

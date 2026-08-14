@@ -71,8 +71,15 @@ function pickImageFile(cb: (path: string) => void): void {
   input.onchange = () => {
     const f = input.files?.[0]
     if (!f) return
-    const path = (f as { path?: string }).path ?? URL.createObjectURL(f)
-    cb(path)
+    const path = (f as { path?: string }).path
+    if (path) {
+      cb(path)
+      return
+    }
+    // 浏览器降级：无 Electron 文件路径，转 data URL 插入（避免 blob URL 无法释放的内存驻留）
+    const reader = new FileReader()
+    reader.onload = () => cb(String(reader.result))
+    reader.readAsDataURL(f)
   }
   input.click()
 }

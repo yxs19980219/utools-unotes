@@ -199,9 +199,7 @@ export async function updateObject(object: NoteObject): Promise<NoteObject> {
 /** 删除对象并级联删除其下全部笔记（设计文档：对象删除 = 级联，UI 负责确认数量） */
 export async function deleteObjectCascade(objectId: string): Promise<number> {
   const notes = (await listNotes()).filter((n) => n.objectId === objectId)
-  for (const n of notes) {
-    await removeById(n._id)
-  }
+  await Promise.all(notes.map((n) => removeById(n._id)))
   await removeById(objectId)
   return notes.length
 }
@@ -258,7 +256,10 @@ export async function createTag(input: { name: string; aliases?: string[]; id?: 
     // id 由调用方（tagNormalize）生成以处理 slug 冲突；缺省时用名称 slugify
     _id: input.id ?? `${ID_PREFIX.tag}${slugify(input.name)}`,
     name: input.name.trim(),
-    aliases: (input.aliases ?? []).map((a) => a.trim()).filter(Boolean),
+    aliases: (input.aliases ?? []).flatMap((a) => {
+      const t = a.trim()
+      return t ? [t] : []
+    }),
     createdAt: now(),
   }
   return putDoc(doc)

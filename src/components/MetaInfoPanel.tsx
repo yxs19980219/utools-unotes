@@ -71,9 +71,9 @@ export default function MetaInfoPanel({ note, onJump, className }: MetaInfoPanel
             <div className="flex flex-col gap-0.5">
               <div className="text-xs font-medium text-muted-foreground">大纲</div>
               <div className="max-h-56 overflow-y-auto">
-                {outline.map((item, i) => (
+                {outline.map((item) => (
                   <button
-                    key={`${item.offset}-${i}`}
+                    key={item.offset}
                     type="button"
                     className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-sm transition-colors hover:bg-accent"
                     style={{ paddingLeft: `${(item.level - 1) * 0.9 + 0.25}rem` }}

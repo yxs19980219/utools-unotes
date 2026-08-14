@@ -57,7 +57,7 @@ import type { ReactNode } from 'react'
 import type { Tag } from '@/types'
 
 /** 编辑标签表单（Dialog 内容；Dialog 关闭即 unmount，打开时重新以最新 tag 初始化） */
-export function TagEditDialog({
+function TagEditDialog({
   tag,
   onOpenChange,
 }: {
@@ -67,7 +67,7 @@ export function TagEditDialog({
   const allTags = useTagsStore((s) => s.tags)
   const update = useTagsStore((s) => s.update)
   const [name, setName] = useState(tag.name)
-  const [aliasesText, setAliasesText] = useState(tag.aliases.join('\n'))
+  const [aliasesText, setAliasesText] = useState(() => tag.aliases.join('\n'))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 

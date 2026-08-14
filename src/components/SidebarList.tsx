@@ -133,23 +133,32 @@ function ObjectContextMenu({
 
   const handleArchive = async () => {
     setBusy(true)
-    const ok = await archiveObject(object._id)
-    if (ok) setDialog(null)
-    setBusy(false)
+    try {
+      const ok = await archiveObject(object._id)
+      if (ok) setDialog(null)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleRestore = async () => {
     setBusy(true)
-    const ok = await restoreObject(object._id)
-    if (ok) setDialog(null)
-    setBusy(false)
+    try {
+      const ok = await restoreObject(object._id)
+      if (ok) setDialog(null)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const handleDelete = async () => {
     setBusy(true)
-    const count = await removeObjectWithToast(object._id)
-    if (count >= 0) setDialog(null)
-    setBusy(false)
+    try {
+      const count = await removeObjectWithToast(object._id)
+      if (count >= 0) setDialog(null)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const dialogContent =
