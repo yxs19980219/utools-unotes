@@ -21,8 +21,8 @@ import type { Note } from '@/types'
 
 interface MetaInfoPanelProps {
   note: Note
-  /** 大纲项点击：跳转编辑器到指定偏移（滚动 + 定位光标） */
-  onJump(offset: number): void
+  /** 大纲项点击：跳转编辑器到大纲第 index 项（滚动 + 定位光标） */
+  onJump(index: number): void
   className?: string
 }
 
@@ -77,7 +77,7 @@ export default function MetaInfoPanel({ note, onJump, className }: MetaInfoPanel
                     type="button"
                     className="flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left text-sm transition-colors hover:bg-accent"
                     style={{ paddingLeft: `${(item.level - 1) * 0.9 + 0.25}rem` }}
-                    onClick={() => onJump(item.offset)}
+                    onClick={() => onJump(i)}
                   >
                     <span className="shrink-0 text-[0.65rem] text-muted-foreground">
                       {'#'.repeat(item.level)}

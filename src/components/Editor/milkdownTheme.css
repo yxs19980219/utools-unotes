@@ -1,0 +1,53 @@
+/* Milkdown Crepe 主题适配：CSS 变量映射项目 Tailwind 色板（浅色 + .dark 深色）
+ * 基础样式在 MilkdownEditor.tsx 中 import '@milkdown/crepe/theme/common/style.css' */
+
+.milkdown {
+  --crepe-color-background: var(--background);
+  --crepe-color-on-background: var(--foreground);
+  --crepe-color-surface: var(--card);
+  --crepe-color-surface-low: var(--muted);
+  --crepe-color-on-surface: var(--card-foreground);
+  --crepe-color-on-surface-variant: var(--muted-foreground);
+  --crepe-color-outline: var(--border);
+  --crepe-color-primary: var(--foreground);
+  --crepe-color-secondary: var(--secondary);
+  --crepe-color-on-secondary: var(--secondary-foreground);
+  --crepe-color-inverse: var(--foreground);
+  --crepe-color-on-inverse: var(--background);
+  --crepe-color-inline-code: #b3391f;
+  --crepe-color-error: var(--destructive);
+  --crepe-color-hover: var(--accent);
+  --crepe-color-selected: var(--accent);
+  --crepe-color-inline-area: var(--accent);
+
+  --crepe-base-font-size: 15px;
+  --crepe-font-title: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  --crepe-font-default: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  --crepe-font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.dark .milkdown {
+  --crepe-color-background: var(--background);
+  --crepe-color-on-background: var(--foreground);
+  --crepe-color-surface: var(--card);
+  --crepe-color-surface-low: var(--muted);
+  --crepe-color-on-surface: var(--card-foreground);
+  --crepe-color-on-surface-variant: var(--muted-foreground);
+  --crepe-color-outline: var(--border);
+  --crepe-color-primary: var(--foreground);
+  --crepe-color-secondary: var(--secondary);
+  --crepe-color-on-secondary: var(--secondary-foreground);
+  --crepe-color-inverse: var(--foreground);
+  --crepe-color-on-inverse: var(--background);
+  --crepe-color-inline-code: #ffb4ab;
+  --crepe-color-error: var(--destructive);
+  --crepe-color-hover: var(--accent);
+  --crepe-color-selected: var(--accent);
+  --crepe-color-inline-area: var(--accent);
+}
+
+/* 只读态：隐藏块手柄等交互痕迹（data-readonly 挂在外层容器） */
+[data-readonly='true'] .block-handle,
+[data-readonly='true'] .crepe-block-menu {
+  display: none;
+}

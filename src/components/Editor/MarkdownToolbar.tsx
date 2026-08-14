@@ -33,7 +33,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import type { MarkdownInsertApi } from './CodeMirrorEditor'
+import type { MarkdownInsertApi } from './markdownInsertApi'
 
 interface ToolDef {
   id: string
@@ -73,7 +73,9 @@ function pickImageFile(cb: (path: string) => void): void {
     if (!f) return
     const path = (f as { path?: string }).path ?? URL.createObjectURL(f)
     cb(path)
+    input.remove()
   }
+  document.body.appendChild(input)
   input.click()
 }
 
