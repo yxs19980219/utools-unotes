@@ -41,7 +41,7 @@
 .cm-math-block {
   display: block;
   text-align: center;
-  padding: 0.4em 0;
+  padding: 0.1em 0;
 }
 
 .cm-math-error {
@@ -52,4 +52,11 @@
 .cm-underline {
   text-decoration: underline;
   text-underline-offset: 0.15em;
+}
+
+/* ---- R1 编辑区宽度：覆盖 inline-preview.css 的 70ch 居中，占满可用宽度 ---- */
+.atomic-cm-editor .cm-content {
+  max-width: none;
+  margin-inline: 0;
+  padding-inline: 0.75rem;
 }

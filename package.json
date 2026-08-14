@@ -15,10 +15,11 @@
     "smoke:outline": "node scripts/smoke-outline.ts",
     "smoke:tableOps": "node scripts/smoke-tableOps.ts",
     "smoke:tableModel": "node scripts/smoke-tableModel.ts",
-    "smoke:editor": "node scripts/smoke-editor.mjs"
+    "smoke:editor": "node scripts/smoke-editor.mjs",
+    "postinstall": "patch-package"
   },
   "dependencies": {
-    "@atomic-editor/editor": "^0.6.2",
+    "@atomic-editor/editor": "0.6.2",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.4",
     "@codemirror/lang-css": "^6.3.1",
@@ -53,6 +54,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "lightningcss": "^1.33.0",
+    "patch-package": "^8.0.1",
     "playwright-core": "^1.62.1",
     "shadcn": "^4.17.0",
     "tailwindcss": "^4.3.3",

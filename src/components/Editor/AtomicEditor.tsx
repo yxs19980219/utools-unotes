@@ -160,7 +160,7 @@ const AtomicEditor = memo(
             markdown({
               base: markdownLanguage,
               codeLanguages: CODE_LANGUAGES as LanguageDescription[],
-              extensions: highlightMarkdown,
+              extensions: [highlightMarkdown, { remove: ['SetextHeading'] }],
             }),
             markdownLanguage.data.of({
               closeBrackets: { brackets: ['(', '[', '{', "'", '"', '*', '_', '`'] },

@@ -1,0 +1,70 @@
+diff --git a/node_modules/@atomic-editor/editor/dist/inline-preview.js b/node_modules/@atomic-editor/editor/dist/inline-preview.js
+index 67f18b3..f956abd 100644
+--- a/node_modules/@atomic-editor/editor/dist/inline-preview.js
++++ b/node_modules/@atomic-editor/editor/dist/inline-preview.js
+@@ -218,8 +218,17 @@ function linkDestinationUrl(link, doc) {
+         .find((url) => url.from >= labelClose.to) ?? null);
+ }
+ class BulletWidget extends WidgetType {
+-    eq() {
+-        return true;
++    constructor(depth) {
++        super();
++        Object.defineProperty(this, "depth", {
++            enumerable: true,
++            configurable: true,
++            writable: true,
++            value: depth
++        });
++    }
++    eq(other) {
++        return other.depth === this.depth;
+     }
+     toDOM() {
+         // The `.cm-atomic-list-marker` class is what forces the
+@@ -228,14 +237,14 @@ class BulletWidget extends WidgetType {
+         // layers on bullet-specific color / weight.
+         const span = document.createElement('span');
+         span.className = 'cm-atomic-list-marker cm-atomic-bullet';
+-        span.textContent = '•';
++        // 列表标记按层级循环：depth 0 实心圆 •、1 空心圆 ○、2 实心方形 ▪、≥3 循环
++        span.textContent = ['•', '○', '▪'][this.depth % 3];
+         return span;
+     }
+     ignoreEvent() {
+         return false;
+     }
+ }
+-const BULLET_WIDGET = new BulletWidget();
+ class TaskCheckboxWidget extends WidgetType {
+     constructor(checked) {
+         super();
+@@ -318,7 +327,7 @@ function pushReplace(ranges, doc, from, to, spec = {}) {
+ }
+ const LIST_BASE_EM = 0.8;
+ const LIST_ALCOVE_EM = 1.2;
+-const LIST_LEVEL_EM = 0.6;
++const LIST_LEVEL_EM = 1.2;
+ function nearestListItem(node) {
+     for (let current = node; current; current = current.parent) {
+         if (current.name === 'ListItem')
+@@ -454,6 +463,10 @@ function buildInlineDecorations(view) {
+                         shouldHide = !activeLines.has(lineNum);
+                     }
+                 }
++                else if (node.name === 'QuoteMark') {
++                    // 引用标记 `>` 恒隐藏（含光标行，完全所见即所得）
++                    shouldHide = true;
++                }
+                 else {
+                     shouldHide = !activeLines.has(lineNum);
+                 }
+@@ -578,7 +591,7 @@ function buildInlineDecorations(view) {
+                         // Bullet: substitute with the fixed-width marker
+                         // widget, swallowing the trailing space so content
+                         // starts precisely at padding-left.
+-                        pushReplace(ranges, doc, node.from, markEnd, { widget: BULLET_WIDGET });
++                        pushReplace(ranges, doc, node.from, markEnd, { widget: new BulletWidget(listItem ? listItemDepth(listItem) : 0) });
+                     }
+                     else {
+                         // Ordered list (or anything else with a non-standard

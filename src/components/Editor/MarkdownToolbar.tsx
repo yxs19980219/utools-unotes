@@ -79,14 +79,14 @@ function pickImageFile(cb: (path: string) => void): void {
 
 const TOOLS: ToolDef[] = [
   // ---- 行内 wrap ----
-  { id: 'bold', label: '加粗', icon: Bold, run: (a) => a.wrap('**', '**', '加粗文本') },
-  { id: 'italic', label: '斜体', icon: Italic, run: (a) => a.wrap('*', '*', '斜体文本') },
-  { id: 'underline', label: '下划线', icon: Underline, run: (a) => a.wrap('<u>', '</u>', '下划线文本') },
-  { id: 'strike', label: '删除线', icon: Strikethrough, run: (a) => a.wrap('~~', '~~', '删除线文本') },
-  { id: 'highlight', label: '高亮', icon: Highlighter, run: (a) => a.wrap('==', '==', '高亮文本') },
-  { id: 'inline-code', label: '内联代码', icon: Code, run: (a) => a.wrap('`', '`', 'code') },
-  { id: 'inline-math', label: '内联公式', icon: Sigma, run: (a) => a.wrap('$', '$', '公式') },
-  { id: 'link', label: '链接', icon: Link, run: (a) => a.wrap('[', '](url)', '链接文字') },
+  { id: 'bold', label: '加粗', icon: Bold, run: (a) => a.wrap('**', '**') },
+  { id: 'italic', label: '斜体', icon: Italic, run: (a) => a.wrap('*', '*') },
+  { id: 'underline', label: '下划线', icon: Underline, run: (a) => a.wrap('<u>', '</u>') },
+  { id: 'strike', label: '删除线', icon: Strikethrough, run: (a) => a.wrap('~~', '~~') },
+  { id: 'highlight', label: '高亮', icon: Highlighter, run: (a) => a.wrap('==', '==') },
+  { id: 'inline-code', label: '内联代码', icon: Code, run: (a) => a.wrap('`', '`') },
+  { id: 'inline-math', label: '内联公式', icon: Sigma, run: (a) => a.wrap('$', '$') },
+  { id: 'link', label: '链接', icon: Link, run: (a) => a.wrap('[', '](url)') },
   { id: 'image', label: '图片', icon: Image, run: (a) => pickImageFile((p) => a.insertImage(p)) },
   // ---- 行级 ----
   { id: 'h1', label: '一级标题', icon: Heading1, run: lineTools('# ') },
