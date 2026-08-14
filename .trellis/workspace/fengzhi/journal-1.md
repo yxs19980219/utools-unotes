@@ -107,3 +107,26 @@ dist 解压 1.68 MB（≤5MB）
 ### Status
 
 [OK] **Completed**（待提交）
+
+
+## Session 3: 编辑器即时渲染优化 + 发版 1.6.1
+
+**Date**: 2026-08-14
+**Task**: 编辑器即时渲染优化 + 发版 1.6.1
+**Branch**: `main`
+
+### Summary
+
+修复 CM6 即时渲染编辑器 6 项体验问题（列表标记分层+缩进、禁用 setext、引用恒隐藏、工具栏去占位、宽度/公式微调），采用 patch-package 对 @atomic-editor/editor 0.6.2 打最小补丁；更新 editor.md 契约；发版 v1.6.1（GitHub Release + tag 已推送）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d028c84` | (see git log) |
+| `46dc403` | (see git log) |
+| `748bdb5` | (see git log) |
+
+### Status
+
+[OK] **Completed**

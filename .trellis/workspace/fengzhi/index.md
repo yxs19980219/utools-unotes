@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 2
+- **Total Sessions**: 3
 - **Last Active**: 2026-08-14
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~50 | Active |
+| `journal-1.md` | ~132 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 3 | 2026-08-14 | 编辑器即时渲染优化 + 发版 1.6.1 | `d028c84`, `46dc403`, `748bdb5` | `main` |
 | 2 | 2026-08-14 | Typora 式即时渲染（v1.4.1） | `f948532`, `8163327` | `main` |
 | 1 | 2026-08-14 | CodeMirror 所见即所得表格与代码块编辑 | `c20d547` | `main` |
 <!-- @@@/auto:session-history -->
