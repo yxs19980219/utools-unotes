@@ -88,7 +88,7 @@ try {
   // 2. 新建笔记：Dialog 小窗（仅标题+标签，无正文编辑器），保存后回列表
   await page.getByRole('button', { name: /新笔记/ }).first().click()
   await page.getByLabel('标题').fill('冒烟笔记')
-  const hasBodyEditor = await page.evaluate(() => !!document.querySelector('.milkdown .ProseMirror'))
+  const hasBodyEditor = await page.evaluate(() => !!document.querySelector('.cm-editor'))
   ok('新建笔记无正文编辑器（快速创建）', !hasBodyEditor)
   // AC9：标签联想（点击输入框 → 输入字符 → 弹层出现，含「创建标签」候选）
   const tagInput = page.locator('input[placeholder*="输入标签名"]')
@@ -105,25 +105,25 @@ try {
 
   // 3. 点卡片 → 详情内联编辑器（空正文直接可写）
   await page.getByText('冒烟笔记').first().click()
-  await page.locator('.milkdown .ProseMirror').first().waitFor()
-  // 逐行真实输入（Milkdown 输入规则驱动：标题行、列表首项、续行直接输文本）；
-  // 延迟注入避免 input rule 竞态（真实用户输入有天然间隔）
+  await page.locator('.cm-editor').first().waitFor()
+  // 逐行真实输入（CM6 源码编辑：标题/列表直接输入源码，装饰即时渲染）；
+  // 延迟注入避免竞态（真实用户输入有天然间隔）
   await page.keyboard.type('# 标题', { delay: 25 })
   await page.keyboard.press('Enter')
   await page.keyboard.type('- 列表一', { delay: 25 })
   await page.keyboard.press('Enter')
   await page.keyboard.type('列表二', { delay: 25 })
-  await waitFor(() => !!document.querySelector('.milkdown h1') &&
-    (document.querySelectorAll('.milkdown .milkdown-list-item-block .label').length ?? 0) >= 1)
+  await waitFor(() => !!document.querySelector('.cm-atomic-h1') &&
+    (document.querySelectorAll('.cm-atomic-list-marker').length ?? 0) >= 1)
   const deco = await page.evaluate(() => {
-    const md = document.querySelector('.milkdown')
+    const md = document.querySelector('.atomic-cm-editor')
     return {
-      bulletCount: md?.querySelectorAll('.milkdown-list-item-block .label.bullet').length ?? 0,
-      headingStyled: !!md?.querySelector('h1'),
+      bulletCount: md?.querySelectorAll('.cm-atomic-bullet').length ?? 0,
+      headingStyled: !!md?.querySelector('.cm-atomic-h1'),
     }
   })
-  ok('即时渲染：标题样式（Milkdown）', deco.headingStyled)
-  ok('即时渲染：无序列表 • 项目符号（Milkdown）', deco.bulletCount >= 1)
+  ok('即时渲染：标题样式（atomic）', deco.headingStyled)
+  ok('即时渲染：无序列表 • 项目符号（atomic）', deco.bulletCount >= 1)
 
   // 3e. 公式：行内 $...$ KaTeX 渲染 + R11 无斜杠菜单
   //（勾选框/代码块/表格深度交互见 smoke:editor，此处只冒烟挂载 + 渲染）
@@ -131,14 +131,14 @@ try {
   await page.keyboard.press('Enter') // 列表尾段落 → 新行
   await page.keyboard.type('行内公式 $x^2$ 结束', { delay: 25 })
   await page.keyboard.press('Enter') // 光标离开公式行 → 渲染
-  await waitFor(() => document.querySelectorAll('.milkdown [data-type="math_inline"]').length >= 1)
+  await waitFor(() => document.querySelectorAll('.cm-math-inline').length >= 1)
   ok('AC1：行内公式 KaTeX 渲染（math_inline）',
-    (await page.locator('.milkdown [data-type="math_inline"] .katex').count()) >= 1)
+    (await page.locator('.cm-math-inline .katex').count()) >= 1)
   await page.keyboard.type('/')
   await page.waitForTimeout(300)
   ok('R11：输入 / 不弹斜杠命令菜单（无块编辑形态）',
     (await page.getByRole('menu').count()) === 0 &&
-    (await page.locator('.milkdown-block-handle, [class*="slash"]').count()) === 0)
+    (await page.locator('[class*="block-handle"], [class*="slash"]').count()) === 0)
   await page.keyboard.press('Backspace')
   // 实时保存：无「保存正文」按钮；等公式落盘（markdownUpdated 200ms + save 500ms 叠加）
   await waitFor((s) => window.__snDebug.getActiveNoteContent().includes(s), 4000, '行内公式 $x^2$ 结束')
@@ -148,7 +148,7 @@ try {
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.getByText('冒烟笔记').first().waitFor()
   await page.getByText('冒烟笔记').first().click()
-  await page.locator('.milkdown .ProseMirror').first().waitFor()
+  await page.locator('.cm-editor').first().waitFor()
   const persistedContent = await page.evaluate(() => window.__snDebug.getActiveNoteContent())
   ok('实时保存：重开后正文仍在（未手动保存）',
     persistedContent.includes('列表一') && persistedContent.includes('列表二'))
@@ -209,11 +209,11 @@ try {
   await waitForText('已归档（只读）')
   const archivedNote = await page.evaluate(() => document.body.innerText)
   const readOnlyEditor = await page.evaluate(() => ({
-    contentEditable: document.querySelector('.milkdown .ProseMirror')?.getAttribute('contenteditable'),
-    mathRendered: document.querySelectorAll('.milkdown [data-type="math_inline"]').length >= 1,
+    readOnly: !!document.querySelector('.cm-atomic-readonly'),
+    mathRendered: document.querySelectorAll('.cm-math-inline').length >= 1,
   }))
   ok('AC9：归档笔记只读（同一内核 readOnly，无工具栏）',
-    archivedNote.includes('已归档（只读）') && readOnlyEditor.contentEditable === 'false' &&
+    archivedNote.includes('已归档（只读）') && readOnlyEditor.readOnly &&
     (await page.getByRole('toolbar').count()) === 0)
   ok('AC9：归档只读公式仍渲染（KaTeX）', readOnlyEditor.mathRendered)
   // 归档视图对象行右键 = 恢复/删除
@@ -303,7 +303,7 @@ try {
   await page.locator('aside').getByText('UI 冒烟测试对象').first().click()
   await page.getByText('冒烟笔记').first().waitFor()
   await page.getByText('冒烟笔记').first().click()
-  await page.locator('.milkdown .ProseMirror').first().waitFor()
+  await page.locator('.cm-editor').first().waitFor()
   // AC9：NoteView 顶栏（返回按钮所在行）无对象名，只有笔记自身信息
   const noteHeaderText = await page
     .getByRole('button', { name: /返回/ })
@@ -318,7 +318,7 @@ try {
   // 实时保存时代：无「写正文」按钮（已进入编辑态）、无 localStorage 草稿、切走无确认框
   // 编辑器进入时 autoFocus 已聚焦（勿再 click 容器中心——会落到空白区丢失焦点）
   await page.keyboard.type('\n实时保存测试')
-  // Milkdown markdownUpdated（200ms 防抖）+ NoteView 保存（500ms 防抖）叠加，
+  // CM6 updateListener 即时回写 + NoteView 保存（500ms 防抖）叠加，
   // 用条件等待替代固定超时（否则偶发未落盘）
   await waitFor((s) => window.__snDebug.getActiveNoteContent().includes(s), 8000, '实时保存测试')
   const draftKeys = await page.evaluate(() =>
@@ -331,9 +331,9 @@ try {
   ok('实时保存：切走无确认框', (await page.getByRole('alertdialog').count()) === 0)
   // 重进笔记：正文已自动落盘（持久化验证）
   await page.getByText('冒烟笔记').first().click()
-  await page.locator('.milkdown .ProseMirror').first().waitFor()
+  await page.locator('.cm-editor').first().waitFor()
   const reenterText = await page.evaluate(
-    () => document.querySelector('.milkdown .ProseMirror')?.textContent ?? '',
+    () => document.querySelector('.cm-content')?.textContent ?? '',
   )
   ok('实时保存：重进正文仍在（未手动保存）', reenterText.includes('实时保存测试'))
 
@@ -345,8 +345,8 @@ try {
   await page.getByRole('button', { name: '保存' }).click()
   await page.getByText('空正文草稿').first().waitFor()
   await page.getByText('空正文草稿').first().click()
-  await page.locator('.milkdown .ProseMirror').first().waitFor()
-  ok('空正文笔记直接进入编辑器', await page.evaluate(() => !!document.querySelector('.milkdown .ProseMirror')))
+  await page.locator('.cm-editor').first().waitFor()
+  ok('空正文笔记直接进入编辑器', await page.evaluate(() => !!document.querySelector('.cm-editor')))
   // autoFocus 已聚焦，直接输入（勿 click 容器中心——空文档中心是空白区会失焦）
   await page.keyboard.type('空正文草稿内容')
   await page.waitForTimeout(900) // 防抖 500ms 落盘 → 固定 900ms 余量
