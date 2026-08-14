@@ -1,12 +1,12 @@
 /**
- * components/NoteView.tsx —— 笔记详情（实时保存时代，08-12 重构；08-14 内核换 Milkdown）
+ * components/NoteView.tsx —— 笔记详情（实时保存时代，08-12 重构；08-14 内核换 CM6/atomic-editor）
  *
  * 交互契约（R6-R8/R10/R12-R13）：
- * - 打开非归档笔记即进入编辑态（MilkdownEditor + MarkdownToolbar），无「写正文」按钮
+ * - 打开非归档笔记即进入编辑态（AtomicEditor + MarkdownToolbar），无「写正文」按钮
  * - 正文实时保存：停止输入 500ms 防抖自动落盘（updateNote）；成功静默、失败 toast
  * - 无手动保存按钮、无底部操作栏、无未保存确认（DirtyGuard 已整体删除）
  * - Ctrl+S 立即 flush（清防抖定时器 + 立即保存）
- * - 归档笔记只读（MilkdownEditor readOnly，同一内核渲染：公式/表格/高亮一致），无编辑入口
+ * - 归档笔记只读（AtomicEditor readOnly，同一内核渲染：公式/表格/高亮一致），无编辑入口
  * - 标签 + 更新时间元信息行在工具行下方共用展示（编辑/只读均可见）
  *
  * 并发正确性（design.md 3.2）：savingRef 串行化 + 成功后的追平循环——
@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeftIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
-import MilkdownEditor, { type MarkdownInsertApi } from '@/components/Editor/MilkdownEditor'
+import AtomicEditor, { type MarkdownInsertApi } from '@/components/Editor/AtomicEditor'
 import MarkdownToolbar from '@/components/Editor/MarkdownToolbar'
 import TagChip from '@/components/TagChip'
 import { Badge } from '@/components/ui/badge'
@@ -56,15 +56,8 @@ export default function NoteView({ noteId }: { noteId: string }) {
   /** 编辑器可见：非归档恒编辑（空正文亦直接编辑，placeholder 引导） */
   const showEditor = !readonly
 
-  /** noteId 变化（组件重挂外的兜底）：重置草稿与防抖 */
-  useEffect(() => {
-    const current = useNotesStore.getState().getById(noteId)?.content ?? ''
-    draftRef.current = current
-    setDraft(current)
-    return () => {
-      if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current)
-    }
-  }, [noteId])
+  // noteId 变化（组件重挂载外的兜底）已由 ContentArea 的 key 重挂载接管——
+  // draft 初始值即新笔记 content，无需此处重置 effect（design 08-14-editor-cm6-research D2）
 
   /** 实时保存（防抖到点 / Ctrl+S / 卸载 flush 共用） */
   async function save() {
@@ -178,7 +171,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
             <MetaInfoPanel note={note} onJump={handleJump} className="ml-auto" />
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            <MilkdownEditor
+            <AtomicEditor
               ref={setEditorApi}
               documentId={noteId}
               value={draft}
@@ -192,7 +185,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
       ) : (
         <div className="min-h-0 flex-1 overflow-hidden">
           {note.content ? (
-            <MilkdownEditor
+            <AtomicEditor
               documentId={noteId}
               value={note.content}
               onChange={noopChange}

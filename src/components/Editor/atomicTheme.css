@@ -1,0 +1,55 @@
+/**
+ * components/Editor/atomicTheme.css —— atomic-editor 主题映射 + 自研装饰样式
+ *
+ * 任务 08-14-editor-cm6-research（D5）：atomic-editor 通过 `--atomic-editor-*` CSS 变量
+ * 主题化。本项目用 shadcn 语义色（html.dark 类驱动），此处把变量映射到项目 token——
+ * 变量引用项目语义色，深浅色自动跟随（无需在此区分 light/dark，atomic 的
+ * `[data-theme="light"]` 块本项目不使用）。
+ *
+ * 自研装饰样式（mathExtension / underlineExtension）一并在此定义。
+ */
+
+.atomic-cm-editor {
+  /* 文本与表面 */
+  --atomic-editor-font: var(--font-sans);
+  --atomic-editor-font-mono: var(--font-mono);
+  --atomic-editor-fg: var(--foreground);
+  --atomic-editor-fg-muted: var(--muted-foreground);
+  --atomic-editor-fg-faint: var(--muted-foreground);
+  --atomic-editor-bg: var(--background);
+  --atomic-editor-bg-panel: var(--card);
+  --atomic-editor-bg-surface: var(--muted);
+  --atomic-editor-border: var(--border);
+  /* 中性强调（项目黑白灰体系，强调 = 前景色；引用轨道/揭示 tint 用 muted） */
+  --atomic-editor-accent: var(--foreground);
+  --atomic-editor-accent-bright: var(--foreground);
+  --atomic-editor-accent-soft: var(--muted);
+  --atomic-editor-link: var(--foreground);
+  --atomic-editor-link-hover: var(--muted-foreground);
+  --atomic-editor-code-bg: var(--muted);
+  /* 选区/搜索高亮（浅色与暗色共用的中性 tint） */
+  --atomic-editor-selection-bg: var(--editor-accent-45);
+  --atomic-editor-search-bg: var(--editor-muted-55);
+  --atomic-editor-search-bg-active: var(--editor-accent-45);
+}
+
+/* ---- 自研公式装饰 ---- */
+.cm-math-inline {
+  display: inline;
+}
+
+.cm-math-block {
+  display: block;
+  text-align: center;
+  padding: 0.4em 0;
+}
+
+.cm-math-error {
+  color: var(--destructive);
+}
+
+/* ---- 自研下划线装饰 ---- */
+.cm-underline {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}

@@ -130,7 +130,9 @@ export default function ContentArea() {
 
   // 笔记全文（R6 第二种内容形态）——优先于搜索态：搜索态点卡片进全文（AC9 只读），返回后回搜索结果
   if (activeNoteId) {
-    return <NoteView noteId={activeNoteId} />
+    // key 强制按笔记重挂载：切笔记时 NoteView 的 draft 初始值即新笔记 content，
+    // 编辑器（AtomicEditor）随组件重挂载读正确初始值（design 08-14-editor-cm6-research D2）
+    return <NoteView key={activeNoteId} noteId={activeNoteId} />
   }
 
   // 搜索态：阶段 7 子输入框驱动（setSubInput → ui.setSearch）

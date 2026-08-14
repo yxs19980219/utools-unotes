@@ -33,7 +33,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import type { MarkdownInsertApi } from './MilkdownEditor'
+import type { MarkdownInsertApi } from './AtomicEditor'
 
 interface ToolDef {
   id: string
