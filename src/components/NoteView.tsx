@@ -1,12 +1,12 @@
 /**
- * components/NoteView.tsx —— 笔记详情（实时保存时代，08-12 重构；08-14 内核换 atomic-editor）
+ * components/NoteView.tsx —— 笔记详情（实时保存时代，08-12 重构；08-14 内核换 Milkdown）
  *
  * 交互契约（R6-R8/R10/R12-R13）：
- * - 打开非归档笔记即进入编辑态（AtomicEditor + MarkdownToolbar），无「写正文」按钮
+ * - 打开非归档笔记即进入编辑态（MilkdownEditor + MarkdownToolbar），无「写正文」按钮
  * - 正文实时保存：停止输入 500ms 防抖自动落盘（updateNote）；成功静默、失败 toast
  * - 无手动保存按钮、无底部操作栏、无未保存确认（DirtyGuard 已整体删除）
  * - Ctrl+S 立即 flush（清防抖定时器 + 立即保存）
- * - 归档笔记只读（AtomicEditor readOnly，同一内核渲染：公式/表格/高亮一致），无编辑入口
+ * - 归档笔记只读（MilkdownEditor readOnly，同一内核渲染：公式/表格/高亮一致），无编辑入口
  * - 标签 + 更新时间元信息行在工具行下方共用展示（编辑/只读均可见）
  *
  * 并发正确性（design.md 3.2）：savingRef 串行化 + 成功后的追平循环——
@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeftIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
-import AtomicEditor, { type MarkdownInsertApi } from '@/components/Editor/AtomicEditor'
+import MilkdownEditor, { type MarkdownInsertApi } from '@/components/Editor/MilkdownEditor'
 import MarkdownToolbar from '@/components/Editor/MarkdownToolbar'
 import TagChip from '@/components/TagChip'
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +27,7 @@ import { useObjectsStore } from '@/stores/objects'
 import { useTagsStore } from '@/stores/tags'
 import { useUiStore } from '@/stores/ui'
 import MetaInfoPanel from '@/components/MetaInfoPanel'
+import type { OutlineItem } from '@/lib/outline'
 
 /** 实时保存防抖（ms）：打字停顿间隙不写盘，500ms 平衡实时性与写盘频率（本地 db 几乎不会出错，无需失败重试） */
 const SAVE_DEBOUNCE_MS = 500
@@ -121,10 +122,10 @@ export default function NoteView({ noteId }: { noteId: string }) {
   // 编辑器插入 API（state 驱动：ref 变化不触发渲染，工具栏需要实时拿到实例）
   const [editorApi, setEditorApi] = useState<MarkdownInsertApi | null>(null)
 
-  /** 大纲跳转：编辑器定位到标题偏移（滚动 + 光标） */
+  /** 大纲跳转：编辑器定位到对应标题（滚动 + 光标） */
   const handleJump = useCallback(
-    (offset: number) => {
-      editorApi?.jumpTo(offset)
+    (item: OutlineItem) => {
+      editorApi?.jumpTo(item)
     },
     [editorApi],
   )
@@ -177,7 +178,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
             <MetaInfoPanel note={note} onJump={handleJump} className="ml-auto" />
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            <AtomicEditor
+            <MilkdownEditor
               ref={setEditorApi}
               documentId={noteId}
               value={draft}
@@ -191,7 +192,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
       ) : (
         <div className="min-h-0 flex-1 overflow-hidden">
           {note.content ? (
-            <AtomicEditor
+            <MilkdownEditor
               documentId={noteId}
               value={note.content}
               onChange={noopChange}

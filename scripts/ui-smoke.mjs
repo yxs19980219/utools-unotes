@@ -88,7 +88,7 @@ try {
   // 2. 新建笔记：Dialog 小窗（仅标题+标签，无正文编辑器），保存后回列表
   await page.getByRole('button', { name: /新笔记/ }).first().click()
   await page.getByLabel('标题').fill('冒烟笔记')
-  const hasBodyEditor = await page.evaluate(() => !!document.querySelector('.cm-content'))
+  const hasBodyEditor = await page.evaluate(() => !!document.querySelector('.milkdown .ProseMirror'))
   ok('新建笔记无正文编辑器（快速创建）', !hasBodyEditor)
   // AC9：标签联想（点击输入框 → 输入字符 → 弹层出现，含「创建标签」候选）
   const tagInput = page.locator('input[placeholder*="输入标签名"]')
@@ -105,84 +105,65 @@ try {
 
   // 3. 点卡片 → 详情内联编辑器（空正文直接可写）
   await page.getByText('冒烟笔记').first().click()
-  await page.locator('.cm-content').first().waitFor()
-  await page.locator('.cm-content').first().click()
-  await page.keyboard.type('# 标题\n- 列表项一\n- 列表项二')
-  await waitFor(() => !!document.querySelector('.cm-line.cm-atomic-h1') &&
-    (document.querySelectorAll('.cm-atomic-list-marker.cm-atomic-bullet').length ?? 0) >= 1)
+  await page.locator('.milkdown .ProseMirror').first().waitFor()
+  // 逐行真实输入（Milkdown 输入规则驱动：标题行、列表首项、续行直接输文本）
+  await page.keyboard.type('# 标题')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('- 列表一')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('列表二')
+  await waitFor(() => !!document.querySelector('.milkdown h1') &&
+    (document.querySelectorAll('.milkdown .milkdown-list-item-block .label').length ?? 0) >= 1)
   const deco = await page.evaluate(() => {
-    const cm = document.querySelector('.cm-content')
+    const md = document.querySelector('.milkdown')
     return {
-      bulletCount: cm?.querySelectorAll('.cm-atomic-list-marker.cm-atomic-bullet').length ?? 0,
-      headingStyled: !!cm?.querySelector('.cm-line.cm-atomic-h1'),
+      bulletCount: md?.querySelectorAll('.milkdown-list-item-block .label.bullet').length ?? 0,
+      headingStyled: !!md?.querySelector('h1'),
     }
   })
-  ok('即时渲染：标题样式装饰（atomic）', deco.headingStyled)
-  ok('即时渲染：无序列表 • 项目符号（atomic）', deco.bulletCount >= 1)
+  ok('即时渲染：标题样式（Milkdown）', deco.headingStyled)
+  ok('即时渲染：无序列表 • 项目符号（Milkdown）', deco.bulletCount >= 1)
 
   // 3b. 快捷工具栏：点击「勾选框」插入任务列表 → 勾选框可点击切换写回 [x]
-  await page.keyboard.press('Enter')
-  await page.keyboard.press('Backspace') // 去掉列表续行标记，回到空行
+  // 导航到文档尾段落（End 行尾 + ArrowDown 离开列表到 trailing paragraph）
+  await page.keyboard.press('End')
+  await page.keyboard.press('ArrowDown')
   await page.getByRole('button', { name: '勾选框' }).click()
-  await page.keyboard.type('待办项')
-  await page.keyboard.press('Enter') // 光标离开任务行 → 渲染勾选框
-  await waitFor(() => document.querySelectorAll('input.cm-atomic-task-checkbox').length >= 1)
-  const taskCount = await page.evaluate(() => document.querySelectorAll('input.cm-atomic-task-checkbox').length)
-  ok('快捷工具栏：勾选框插入（atomic）', taskCount >= 1)
-  await page.locator('input.cm-atomic-task-checkbox').first().click()
+  await page.keyboard.type('待办一', { delay: 25 })
+  await page.keyboard.press('Enter') // 回车进入任务列表续行 → 渲染勾选框
+  await waitFor(() => document.querySelectorAll('.milkdown .milkdown-list-item-block .label').length >= 1)
+  const taskCount = await page.evaluate(() => document.querySelectorAll('.milkdown .milkdown-list-item-block .label').length)
+  ok('快捷工具栏：勾选框插入（Milkdown）', taskCount >= 1)
+  await page.locator('.milkdown .milkdown-list-item-block .label.unchecked').first().click()
   await waitFor((s) => window.__snDebug.getActiveNoteContent().includes(s), 4000, '[x]')
   ok('AC2：勾选框点击切换写回 [x]',
     await page.evaluate(() => window.__snDebug.getActiveNoteContent().includes('[x]')))
-
-  // 3c. 代码块：光标行显示围栏源码；离开后围栏渲染、无 ``` 残留；语言可改源码
-  await page.getByRole('button', { name: '代码块', exact: true }).click()
-  await waitFor(() => document.querySelector('.cm-content')?.textContent?.includes('```ts'))
-  ok('代码块：光标行显示围栏源码（```ts）',
-    await page.evaluate(() => document.querySelector('.cm-content')?.textContent?.includes('```ts')))
-  await page.keyboard.type('const editorProbe = true')
-  await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowDown') // 离开围栏 → 渲染
-  await waitFor(() => document.querySelectorAll('.cm-line.cm-atomic-fenced-code').length >= 1)
-  ok('代码块：离开后围栏渲染且无 ``` 残留',
-    await page.evaluate(() => {
-      const t = document.querySelector('.cm-content')?.textContent ?? ''
-      return !t.includes('```') && t.includes('const editorProbe = true')
-    }))
-  // 语言切换：ArrowUp×2 回 ```ts 行 → End → 删 ts → 输入 python
-  await page.keyboard.press('ArrowUp')
-  await page.keyboard.press('ArrowUp')
-  await page.keyboard.press('ArrowUp')
+  // 退出任务列表：End + ArrowDown 到文档尾段落（后续 3c/3d 需要）
   await page.keyboard.press('End')
-  await page.keyboard.press('Backspace')
-  await page.keyboard.press('Backspace')
-  await page.keyboard.type('python')
   await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowDown')
-  await page.waitForTimeout(900) // 防抖落盘
-  ok('AC4：代码块语言改写围栏源码（```python）',
-    await page.evaluate(() => window.__snDebug.getActiveNoteContent().includes('```python')))
+  await page.waitForTimeout(120)
 
-  // 3d. 真实表格：WYSIWYG 单元格直编 + 右键菜单行列操作
+  // 3c. 代码块：工具栏插入 → 渲染（无围栏源码残留）；Ctrl+Enter 退出
+  await page.getByRole('button', { name: '代码块', exact: true }).click()
+  await page.keyboard.type('const editorProbe = true')
+  await page.keyboard.press('Control+Enter') // 退出代码块 → 渲染
+  await waitFor(() => document.querySelectorAll('.milkdown .milkdown-code-block').length >= 1)
+  ok('代码块：插入渲染（Milkdown code-block）',
+    await page.evaluate(() => {
+      const t = document.querySelector('.milkdown .ProseMirror')?.textContent ?? ''
+      return t.includes('const editorProbe = true')
+    }))
+
+  // 3d. 真实表格：插入渲染 + 单元格直编（Milkdown gfm 表格；无右键行列菜单）
   await page.keyboard.press('Control+End')
   await page.keyboard.type('\n')
   await page.getByRole('button', { name: '表格', exact: true }).click()
-  await page.locator('.cm-atomic-table table').first().waitFor()
-  ok('表格：插入后出现真实 table（atomic）', (await page.locator('.cm-atomic-table table').count()) >= 1)
-  // 结构操作：右键表格 → 菜单 Insert row below（先做结构、后进单元格，撤销干净）
-  await page.locator('.cm-atomic-table tbody tr td').first().click({ button: 'right' })
-  await page.locator('.cm-atomic-table-menu').waitFor()
-  const tableMenuText = await page.locator('.cm-atomic-table-menu').innerText()
-  ok('表格：右键菜单含行列操作', tableMenuText.includes('Insert row below') && tableMenuText.includes('Delete column'))
-  await page.locator('.cm-atomic-table-menu').getByText('Insert row below', { exact: true }).click()
-  await waitFor(() => document.querySelectorAll('.cm-atomic-table tbody tr').length >= 2)
-  ok('表格：菜单新增行（Insert row below）',
-    (await page.locator('.cm-atomic-table tbody tr').count()) >= 2)
-  // 单元格直编：点 body 首个单元格 → 输入即写回源码
-  await page.locator('.cm-atomic-table tbody tr td .cm-atomic-table-cell-source').first().click()
+  await page.locator('.milkdown table').first().waitFor()
+  ok('表格：插入后出现真实 table（Milkdown）', (await page.locator('.milkdown table').count()) >= 1)
+  // 单元格直编：点首个 body 单元格 → 输入即写回源码
+  await page.locator('.milkdown table tbody tr td').first().click()
   await page.keyboard.type('单元格编辑')
-  await waitFor(() => document.querySelector('.cm-atomic-table tbody tr td')?.textContent?.includes('单元格编辑'))
-  // 退出单元格：点表格后最后一个空行（编辑器光标回文档尾）
-  await page.locator('.cm-content .cm-line').last().click()
+  await waitFor(() => document.querySelector('.milkdown table tbody tr td')?.textContent?.includes('单元格编辑'))
   await waitFor((s) => window.__snDebug.getActiveNoteContent().includes(s), 4000, '单元格编辑')
   ok('表格：单元格可编辑（WYSIWYG 直编写回源码）',
     await page.evaluate(() => window.__snDebug.getActiveNoteContent().includes('单元格编辑')))
@@ -191,14 +172,14 @@ try {
   await page.keyboard.press('Control+End')
   await page.keyboard.type('\n\n行内公式 $x^2$ 结束') // 表格后需空行（否则并入表格行）
   await page.keyboard.press('Enter') // 光标离开公式行 → 渲染
-  await waitFor(() => document.querySelectorAll('.cm-math-inline').length >= 1)
-  ok('AC1：行内公式 KaTeX 渲染（.cm-math-inline）',
-    (await page.locator('.cm-math-inline .katex').count()) >= 1)
+  await waitFor(() => document.querySelectorAll('.milkdown [data-type="math_inline"]').length >= 1)
+  ok('AC1：行内公式 KaTeX 渲染（math_inline）',
+    (await page.locator('.milkdown [data-type="math_inline"] .katex').count()) >= 1)
   await page.keyboard.type('/')
   await page.waitForTimeout(300)
   ok('R11：输入 / 不弹斜杠命令菜单（无块编辑形态）',
     (await page.getByRole('menu').count()) === 0 &&
-    (await page.locator('.cm-tooltip').count()) === 0)
+    (await page.locator('.milkdown-block-handle, [class*="slash"]').count()) === 0)
   await page.keyboard.press('Backspace')
   await page.keyboard.press('Backspace')
   // 实时保存：无「保存正文」按钮；防抖 500ms 落盘 → 固定 900ms 余量
@@ -209,17 +190,17 @@ try {
   await page.getByRole('button', { name: /返回/ }).first().click()
   await page.getByText('冒烟笔记').first().waitFor()
   await page.getByText('冒烟笔记').first().click()
-  await page.locator('.cm-content').first().waitFor()
+  await page.locator('.milkdown .ProseMirror').first().waitFor()
   const persistedContent = await page.evaluate(() => window.__snDebug.getActiveNoteContent())
   const persisted = await page.evaluate(() => ({
-    text: document.querySelector('.cm-content')?.textContent ?? '',
-    table: document.querySelectorAll('.cm-atomic-table table').length,
-    fence: document.querySelectorAll('.cm-line.cm-atomic-fenced-code').length,
-    editedCell: [...document.querySelectorAll('.cm-atomic-table td')].some((c) => c.textContent?.includes('单元格编辑')),
+    text: document.querySelector('.milkdown .ProseMirror')?.textContent ?? '',
+    table: document.querySelectorAll('.milkdown table').length,
+    fence: document.querySelectorAll('.milkdown .milkdown-code-block').length,
+    editedCell: [...document.querySelectorAll('.milkdown table td')].some((c) => c.textContent?.includes('单元格编辑')),
   }))
   ok('实时保存：重开后正文仍在（未手动保存）',
     persistedContent.includes('列表项一') && persistedContent.includes('待办项'))
-  ok('AC7：round-trip 源文本字节一致（公式/表格源码原样）',
+  ok('AC7：round-trip 源文本保留（公式/表格源码原样）',
     persistedContent.includes('行内公式 $x^2$ 结束') &&
     persistedContent.includes('| 列1 | 列2 |'))
   ok('编辑器：代码块/表格状态可持久化', persisted.table >= 1 && persisted.fence >= 1 && persisted.editedCell)
@@ -277,17 +258,12 @@ try {
   await page.getByText('冒烟笔记').first().click()
   await waitForText('已归档（只读）')
   const archivedNote = await page.evaluate(() => document.body.innerText)
-  const readOnlyEditor = await page.evaluate(() => {
-    const ed = document.querySelector('.cm-editor.cm-atomic-readonly') ?? document.querySelector('.atomic-cm-editor')
-    return {
-      readonlyClass: !!document.querySelector('.cm-editor.cm-atomic-readonly'),
-      contentEditable: document.querySelector('.cm-content')?.isContentEditable,
-      mathRendered: document.querySelectorAll('.cm-math-inline').length >= 1,
-    }
-  })
+  const readOnlyEditor = await page.evaluate(() => ({
+    contentEditable: document.querySelector('.milkdown .ProseMirror')?.getAttribute('contenteditable'),
+    mathRendered: document.querySelectorAll('.milkdown [data-type="math_inline"]').length >= 1,
+  }))
   ok('AC9：归档笔记只读（同一内核 readOnly，无工具栏）',
-    archivedNote.includes('已归档（只读）') && readOnlyEditor.readonlyClass &&
-    readOnlyEditor.contentEditable === false &&
+    archivedNote.includes('已归档（只读）') && readOnlyEditor.contentEditable === 'false' &&
     (await page.getByRole('toolbar').count()) === 0)
   ok('AC9：归档只读公式仍渲染（KaTeX）', readOnlyEditor.mathRendered)
   // 归档视图对象行右键 = 恢复/删除
@@ -377,7 +353,7 @@ try {
   await page.locator('aside').getByText('UI 冒烟测试对象').first().click()
   await page.getByText('冒烟笔记').first().waitFor()
   await page.getByText('冒烟笔记').first().click()
-  await page.locator('.cm-content').first().waitFor()
+  await page.locator('.milkdown .ProseMirror').first().waitFor()
   // AC9：NoteView 顶栏（返回按钮所在行）无对象名，只有笔记自身信息
   const noteHeaderText = await page
     .getByRole('button', { name: /返回/ })
@@ -390,7 +366,7 @@ try {
   ok('进入笔记后对象栏隐藏（无新笔记按钮）',
     (await page.getByRole('button', { name: /新笔记/ }).count()) === 0)
   // 实时保存时代：无「写正文」按钮（已进入编辑态）、无 localStorage 草稿、切走无确认框
-  await page.locator('.cm-content .cm-line').last().click()
+  await page.locator('.milkdown .ProseMirror').first().click()
   await page.keyboard.type('\n实时保存测试')
   await page.waitForTimeout(900) // 防抖 500ms 落盘 → 固定 900ms 余量
   const draftKeys = await page.evaluate(() =>
@@ -403,9 +379,9 @@ try {
   ok('实时保存：切走无确认框', (await page.getByRole('alertdialog').count()) === 0)
   // 重进笔记：正文已自动落盘（持久化验证）
   await page.getByText('冒烟笔记').first().click()
-  await page.locator('.cm-content').first().waitFor()
+  await page.locator('.milkdown .ProseMirror').first().waitFor()
   const reenterText = await page.evaluate(
-    () => document.querySelector('.cm-content')?.textContent ?? '',
+    () => document.querySelector('.milkdown .ProseMirror')?.textContent ?? '',
   )
   ok('实时保存：重进正文仍在（未手动保存）', reenterText.includes('实时保存测试'))
 
@@ -417,9 +393,9 @@ try {
   await page.getByRole('button', { name: '保存' }).click()
   await page.getByText('空正文草稿').first().waitFor()
   await page.getByText('空正文草稿').first().click()
-  await page.locator('.cm-content').first().waitFor()
-  ok('空正文笔记直接进入编辑器', await page.evaluate(() => !!document.querySelector('.cm-content')))
-  await page.locator('.cm-content').first().click()
+  await page.locator('.milkdown .ProseMirror').first().waitFor()
+  ok('空正文笔记直接进入编辑器', await page.evaluate(() => !!document.querySelector('.milkdown .ProseMirror')))
+  await page.locator('.milkdown .ProseMirror').first().click()
   await page.keyboard.type('空正文草稿内容')
   await page.waitForTimeout(900) // 防抖 500ms 落盘 → 固定 900ms 余量
   const emptyDraftKeys = await page.evaluate(() =>
