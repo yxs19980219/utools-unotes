@@ -98,6 +98,30 @@ File: `src/components/Editor/extensions/underlineDecoration.ts`
   深浅色自动跟随 `html.dark`（不使用 atomic 的 `[data-theme="light"]` 机制）
 - 自研装饰样式（`.cm-math-inline`/`.cm-math-block`/`.cm-math-error`/`.cm-underline`）同文件定义
 - KaTeX 字体经 vite `katexWoff2Only` 裁剪（仅 woff2）；构建目标 chrome 88（lightningcss 降级）
+- **编辑区宽度**（R1）：覆盖 atomic 的 70ch 居中——`.atomic-cm-editor .cm-content { max-width: none; margin-inline: 0; padding-inline: 0.75rem }`（占满可用宽度）
+- **公式高度**（R6）：`.cm-math-block` padding `0.1em 0`（原 0.4em）
+
+## 定制行为（patch @atomic-editor/editor 0.6.2）
+
+> 08-14-editor-instant-render-polish：6 项优化中 3 项（列表圆点分层/缩进/引用恒隐藏）埋在
+> atomic 打包代码，无配置/CSS 入口，采用 patch-package 打最小补丁（4 处）。
+
+- **setext 标题禁用**：`AtomicEditor.tsx` 的 `markdown()` 传
+  `extensions: [highlightMarkdown, { remove: ['SetextHeading'] }]`——`文本\n-`、`文本\n====`
+  不再渲染成标题（标题只用 `#` ATX）；`---` 单独一行的 HorizontalRule 是独立 block parser，不受影响。
+- **列表圆点分层**（patch `inline-preview.js`）：`BulletWidget` 按 `listItemDepth` 渲染
+  `['•','○','▪'][depth % 3]`（depth 0 实心圆 / 1 空心圆 / 2 实心方形 / ≥3 循环）。
+- **列表缩进**（patch）：`LIST_LEVEL_EM` 0.6 → 1.2（每层 +1.2em）。
+- **引用 `>` 恒隐藏**（patch）：`QuoteMark` 的 `shouldHide` 恒 true（光标行也隐藏，对齐
+  ListMark/TaskMarker 已恒隐藏的行为）；标题 `#`/粗体 `**` 等**仍保持光标行揭示**（Obsidian 标准，便于编辑标记）。
+
+**patch-package 机制**：
+- `@atomic-editor/editor` 锁定精确 `0.6.2`（去 `^`）；补丁在 `patches/@atomic-editor+editor+0.6.2.patch`。
+- `package.json` 有 `"postinstall": "patch-package"`，`npm i`/`npm ci` 后自动重放补丁（幂等）。
+- **升级 atomic 需重打补丁**：改 node_modules 后 `npx patch-package @atomic-editor/editor`；
+  npm 12 下生成补丁时需 `$env:npm_config_allow_remote="all"`（EALLOWREMOTE，仅生成时，应用时无需）。
+- **dev 缓存坑**：改 node_modules 后若 dev server 早已启动，`node_modules/.vite` 依赖预构建
+  缓存仍是旧代码——删 `.vite` 重启 dev server 才生效（生产构建 dist 不受影响）。
 
 ## 已知限制（测试与渲染相关）
 

@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/editor.md", "reason": "编辑器架构契约：验收时核对 round-trip、光标行揭示、block widget 契约"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "质量门禁：typecheck/build/smoke:editor/ui-smoke 全绿、渲染层 pitfalls 核对"}
