@@ -87,6 +87,19 @@
   --shadow-2xl: 0px 4px 12px 0px hsl(0, 0%, 0% / 0.20);
   --tracking-normal: -0.01em;
   --spacing: 0.25rem;
+
+  /* 编辑器半透明语义色（Chromium 108 兼容双写：rgba 行生效于老内核，color-mix 行覆盖于 111+）。
+     改色时 rgba 行须与 --muted/--accent 的 hex 值同步（浅色 #f5f5f5 / #ebebeb）。 */
+  --editor-muted-35: rgba(245, 245, 245, 0.35);
+  --editor-muted-45: rgba(245, 245, 245, 0.45);
+  --editor-muted-55: rgba(245, 245, 245, 0.55);
+  --editor-muted-60: rgba(245, 245, 245, 0.6);
+  --editor-accent-45: rgba(235, 235, 235, 0.45);
+  --editor-muted-35: color-mix(in oklab, var(--muted) 35%, transparent);
+  --editor-muted-45: color-mix(in oklab, var(--muted) 45%, transparent);
+  --editor-muted-55: color-mix(in oklab, var(--muted) 55%, transparent);
+  --editor-muted-60: color-mix(in oklab, var(--muted) 60%, transparent);
+  --editor-accent-45: color-mix(in oklab, var(--accent) 45%, transparent);
 }
 
 .dark {
@@ -172,6 +185,18 @@
   --shadow-lg: 0px 6px 20px 0px hsl(0, 0%, 0% / 0.40), 0px 4px 6px -1px hsl(0, 0%, 0% / 0.40);
   --shadow-xl: 0px 6px 20px 0px hsl(0, 0%, 0% / 0.40), 0px 8px 10px -1px hsl(0, 0%, 0% / 0.40);
   --shadow-2xl: 0px 6px 20px 0px hsl(0, 0%, 0% / 1.00);
+
+  /* 编辑器半透明语义色（深色版；rgba 值对应深色 --muted #2e2e2e / --accent #474747） */
+  --editor-muted-35: rgba(46, 46, 46, 0.35);
+  --editor-muted-45: rgba(46, 46, 46, 0.45);
+  --editor-muted-55: rgba(46, 46, 46, 0.55);
+  --editor-muted-60: rgba(46, 46, 46, 0.6);
+  --editor-accent-45: rgba(71, 71, 71, 0.45);
+  --editor-muted-35: color-mix(in oklab, var(--muted) 35%, transparent);
+  --editor-muted-45: color-mix(in oklab, var(--muted) 45%, transparent);
+  --editor-muted-55: color-mix(in oklab, var(--muted) 55%, transparent);
+  --editor-muted-60: color-mix(in oklab, var(--muted) 60%, transparent);
+  --editor-accent-45: color-mix(in oklab, var(--accent) 45%, transparent);
 }
 
 @theme inline {

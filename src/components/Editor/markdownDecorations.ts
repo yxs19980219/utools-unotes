@@ -55,7 +55,7 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground':
     { backgroundColor: 'var(--accent)' },
   '.cm-activeLine': {
-    backgroundColor: 'color-mix(in oklab, var(--accent) 45%, transparent)',
+    backgroundColor: 'var(--editor-accent-45)',
   },
   '.cm-placeholder': { color: 'var(--muted-foreground)', opacity: '0.7' },
 
@@ -69,8 +69,8 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   '.sn-md-h4-mark': { color: 'var(--muted-foreground)', opacity: '0.45', fontSize: '0.7rem' },
   '.sn-md-h5-mark': { color: 'var(--muted-foreground)', opacity: '0.45', fontSize: '0.65rem' },
   '.sn-md-h6-mark': { color: 'var(--muted-foreground)', opacity: '0.45', fontSize: '0.6rem' },
-  /* 非光标行标题/列表标记：完全收起（display:none 不占位）→ 内容顶格展示（Obsidian 折叠标记同款） */
-  '.sn-md-hidden': { display: 'none' },
+  /* 非光标行语法标记：font-size:0 零宽隐藏（display:none 会断裂拖选选区，08-14 实测修复） */
+  '.sn-md-hidden': { fontSize: '0', lineHeight: '0' },
   /* 标题整行样式（字号/字重随级别，与 MarkdownView 只读渲染对齐） */
   '.sn-md-h1': { fontSize: '1.6rem', fontWeight: '700', lineHeight: '1.25' },
   '.sn-md-h2': { fontSize: '1.35rem', fontWeight: '650', lineHeight: '1.3' },
@@ -80,6 +80,7 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   '.sn-md-h6': { fontSize: '0.9rem', fontWeight: '600', color: 'var(--muted-foreground)', lineHeight: '1.4' },
   '.sn-md-bold': { fontWeight: '600' },
   '.sn-md-italic': { fontStyle: 'italic' },
+  '.sn-md-strike': { textDecoration: 'line-through' },
   '.sn-md-code': {
     fontFamily: 'var(--font-mono)',
     fontSize: '0.85em',
@@ -95,14 +96,18 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   },
   '.sn-md-quote': { borderLeft: '2px solid var(--border)', paddingLeft: '6px' },
   '.sn-md-fence': { color: 'var(--muted-foreground)', opacity: '0.45' },
+  /* 代码块（Typora 式）：非光标行隐藏围栏后呈现干净代码卡片 */
   '.sn-md-codeblock': {
-    display: 'inline-block',
+    display: 'block',
     minWidth: '100%',
     boxSizing: 'border-box',
-    padding: '0 6px',
+    padding: '0.4rem 0.6rem',
+    margin: '0.15rem 0',
     fontFamily: 'var(--font-mono)',
     fontSize: '0.82em',
+    lineHeight: '1.5',
     backgroundColor: 'var(--muted)',
+    borderRadius: 'var(--radius-sm)',
   },
   '.sn-md-hr': {
     display: 'block',
@@ -151,26 +156,30 @@ export const markdownEditorTheme: Extension = EditorView.theme({
     borderRadius: '4px',
     verticalAlign: 'middle',
     cursor: 'default',
-    backgroundColor: 'color-mix(in oklab, var(--muted) 60%, transparent)',
+    backgroundColor: 'var(--editor-muted-60)',
   },
   /* 真实表格 Block Widget（design.md §3）：DOM 只显示，输入由 nested CM6 承载 */
   '.sn-md-table-widget': {
-    display: 'block',
+    position: 'relative',
+    display: 'inline-block',
     minWidth: '0',
+    maxWidth: '100%',
     margin: '0.35rem 0',
     overflowX: 'auto',
     border: '1px solid var(--border)',
     borderRadius: 'var(--radius-sm)',
-    backgroundColor: 'color-mix(in oklab, var(--muted) 35%, transparent)',
+    backgroundColor: 'var(--editor-muted-35)',
+    verticalAlign: 'top',
   },
   '.sn-md-table-widget table': {
-    width: '100%',
-    minWidth: '28rem',
+    width: 'max-content',
+    minWidth: '0',
+    maxWidth: '100%',
     borderCollapse: 'collapse',
     fontSize: '0.9rem',
   },
   '.sn-md-table-widget th, .sn-md-table-widget td': {
-    minWidth: '5rem',
+    minWidth: '4.5rem',
     borderBottom: '1px solid var(--border)',
     padding: '0.3rem 0.5rem',
     textAlign: 'left',
@@ -179,7 +188,7 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   },
   '.sn-md-table-widget th': {
     fontWeight: '600',
-    backgroundColor: 'color-mix(in oklab, var(--muted) 55%, transparent)',
+    backgroundColor: 'var(--editor-muted-55)',
   },
   '.sn-md-table-widget tr:last-child td': { borderBottom: 'none' },
   '.sn-md-table-cell-editing': {
@@ -187,7 +196,7 @@ export const markdownEditorTheme: Extension = EditorView.theme({
     backgroundColor: 'var(--background)',
   },
   '.sn-md-table-cell-editor .cm-editor': {
-    minWidth: '5rem',
+    minWidth: '4.5rem',
     backgroundColor: 'transparent',
     color: 'var(--foreground)',
     fontFamily: 'var(--font-sans)',
@@ -195,17 +204,30 @@ export const markdownEditorTheme: Extension = EditorView.theme({
   },
   '.sn-md-table-cell-editor .cm-content': { padding: '0.3rem 0.5rem' },
   '.sn-md-table-cell-editor .cm-line': { padding: '0' },
+  /* 增删行列工具条：hover 表格时右上角悬浮（默认不可见，不打扰正文阅读） */
   '.sn-md-table-toolbar': {
+    position: 'absolute',
+    top: '4px',
+    right: '4px',
     display: 'flex',
     alignItems: 'center',
     gap: '2px',
-    padding: '2px 4px',
-    borderBottom: '1px solid var(--border)',
-    backgroundColor: 'var(--muted)',
+    padding: '2px 3px',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border)',
+    backgroundColor: 'var(--editor-muted-60)',
+    backdropFilter: 'blur(2px)',
+    opacity: '0',
+    pointerEvents: 'none',
+    transition: 'opacity 0.15s ease',
+  },
+  '.sn-md-table-widget:hover .sn-md-table-toolbar': {
+    opacity: '1',
+    pointerEvents: 'auto',
   },
   '.sn-md-table-toolbar button': {
     border: 'none',
-    borderRadius: 'var(--radius-sm)',
+    borderRadius: '3px',
     padding: '1px 5px',
     color: 'var(--muted-foreground)',
     backgroundColor: 'transparent',
@@ -217,23 +239,51 @@ export const markdownEditorTheme: Extension = EditorView.theme({
     color: 'var(--foreground)',
     backgroundColor: 'var(--accent)',
   },
-  /* 代码块语言选择器（需求 10）：围栏行内原生 select，淡色小字 */
+  /* 代码块语言选择器（需求 10）：widget header 内原生 select，pill 样式 */
   '.sn-lang-picker': {
     fontSize: '0.72rem',
     color: 'var(--muted-foreground)',
-    backgroundColor: 'transparent',
-    border: 'none',
+    backgroundColor: 'var(--editor-muted-55)',
+    border: '1px solid var(--border)',
+    borderRadius: '4px',
     outline: 'none',
     cursor: 'pointer',
-    opacity: '0.9',
+    opacity: '1',
     maxWidth: '8em',
+    margin: '0 2px',
+    padding: '0 3px',
   },
   '.sn-lang-picker:hover': {
     opacity: '1',
+    color: 'var(--foreground)',
   },
-  /* GFM 表格（R10）：整表细边框 + muted 背景；表头行加粗 + 下边框 */
+  /* 代码块 Block Widget（Typora 式独立输入框，08-14）：header 语言 + 常驻 nested CM6 */
+  '.sn-md-codeblock-widget': {
+    display: 'block',
+    margin: '0.35rem 0',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border)',
+    backgroundColor: 'var(--muted)',
+    overflow: 'hidden',
+  },
+  '.sn-md-codeblock-header': {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '2px 6px',
+    borderBottom: '1px solid var(--border)',
+    backgroundColor: 'var(--editor-muted-45)',
+  },
+  '.sn-md-codeblock-body .cm-editor': {
+    backgroundColor: 'transparent',
+    color: 'var(--foreground)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '0.85em',
+  },
+  '.sn-md-codeblock-body .cm-content': { padding: '0.25rem 0.5rem' },
+  '.sn-md-codeblock-body .cm-line': { padding: '0' },
+  /* GFM 表格（R10）：整表细边框 + muted 背景；表头行加粗 + 下边框（运行时由 Block Widget 承载） */
   '.sn-md-tbl': {
-    backgroundColor: 'color-mix(in oklab, var(--muted) 45%, transparent)',
+    backgroundColor: 'var(--editor-muted-45)',
     borderLeft: '1px solid var(--border)',
     borderRight: '1px solid var(--border)',
     padding: '0 2px',
@@ -265,6 +315,7 @@ const headingMarks = [1, 2, 3, 4, 5, 6].map((level) =>
 )
 const boldMark = Decoration.mark({ class: 'sn-md-bold' })
 const italicMark = Decoration.mark({ class: 'sn-md-italic' })
+const strikeMark = Decoration.mark({ class: 'sn-md-strike' })
 const codeMark = Decoration.mark({ class: 'sn-md-code' })
 const linkMark = Decoration.mark({ class: 'sn-md-link' })
 const quoteMark = Decoration.mark({ class: 'sn-md-quote' })
@@ -478,17 +529,24 @@ function addRangeDecorations(
         return true
       }
       switch (name) {
-        case 'FencedCode':
+        case 'FencedCode': {
+          // 闭合围栏由代码块 Widget 承载（Typora 式独立输入框，08-14）；
+          // 未闭合（输入中间态，无闭 CodeMark）走装饰兜底（围栏淡化 + 代码区背景）
+          if (node.getChildren('CodeMark').length >= 2) return false
           addFencedCode(builder, state, node, cursorLine)
           return false
+        }
         case 'Emphasis':
-          addEmphasisLike(builder, node, italicMark)
+          addMarkedStyle(builder, state, node, 'EmphasisMark', italicMark, cursorLine)
           return true
         case 'StrongEmphasis':
-          addEmphasisLike(builder, node, boldMark)
+          addMarkedStyle(builder, state, node, 'EmphasisMark', boldMark, cursorLine)
+          return true
+        case 'Strikethrough':
+          addMarkedStyle(builder, state, node, 'StrikethroughMark', strikeMark, cursorLine)
           return true
         case 'InlineCode':
-          addInlineCode(builder, node)
+          addMarkedStyle(builder, state, node, 'CodeMark', codeMark, cursorLine)
           return false
         case 'Link':
           addLink(builder, node)
@@ -553,30 +611,27 @@ function addHeading(
   // 注意：内容区装饰与子节点（StrongEmphasis 等）重叠合法；子节点 by iterate enter
 }
 
-/** 强调：首尾 EmphasisMark dim，中间区间样式（隐式文本按位置处理，嵌套重叠合法） */
-function addEmphasisLike(
+/**
+ * 带标记包裹的行内样式（粗体/斜体/删除线/行内码）：
+ * 标记非光标行 hidden（display:none，与标题 # 同机制）、光标行 dim 淡化；中间区间套 style。
+ * markName 对应 lezer 节点：EmphasisMark / StrikethroughMark / CodeMark。
+ */
+function addMarkedStyle(
   builder: RangeSetBuilder<Decoration>,
+  state: EditorState,
   node: SyntaxNode,
+  markName: 'EmphasisMark' | 'StrikethroughMark' | 'CodeMark',
   style: Decoration,
+  cursorLine: number,
 ): void {
-  const marks = collectChildren(node, 'EmphasisMark')
+  const marks = collectChildren(node, markName)
   if (marks.length === 0) return
   const first = marks[0]
   const last = marks[marks.length - 1]
-  builder.add(first.from, first.to, dimMark)
+  const markDecoration = state.doc.lineAt(node.from).number === cursorLine ? dimMark : hiddenMark
+  builder.add(first.from, first.to, markDecoration)
   if (last.to > first.to) builder.add(first.to, last.from, style)
-  builder.add(last.from, last.to, dimMark)
-}
-
-/** 行内代码：首尾 CodeMark dim，中间 codeMark */
-function addInlineCode(builder: RangeSetBuilder<Decoration>, node: SyntaxNode): void {
-  const marks = collectChildren(node, 'CodeMark')
-  if (marks.length === 0) return
-  const first = marks[0]
-  const last = marks[marks.length - 1]
-  builder.add(first.from, first.to, dimMark)
-  if (last.from > first.to) builder.add(first.to, last.from, codeMark)
-  builder.add(last.from, last.to, dimMark)
+  builder.add(last.from, last.to, markDecoration)
 }
 
 /** 链接/图片：首 LinkMark dim、文本区 linkMark、剩余（](url)）dim */

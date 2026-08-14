@@ -1,13 +1,15 @@
 /**
- * components/Editor/markdownBlockWidgets.ts —— 真实 Markdown 表格 Block Widget（design.md §2~3）
+ * components/Editor/markdownBlockWidgets.ts —— 真实 Markdown 表格/代码块 Block Widget（design.md §2~3）
  *
  * 表格视觉 DOM 只是外层 Markdown 文档的投影。单元格输入挂载单行 nested
  * CodeMirror，并把变化偏移回外层 EditorView；禁止 React 或 contentEditable 直接改源码。
+ * 代码块（Typora 式独立输入框，08-14）：闭合围栏由常驻 nested CM6 承载，无围栏可见。
  */
 import { history, historyKeymap } from '@codemirror/commands'
 import { Annotation, EditorState, RangeSetBuilder, StateField, type Extension } from '@codemirror/state'
 import { syntaxTree } from '@codemirror/language'
 import { keymap, Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view'
+import type { SyntaxNode } from '@lezer/common'
 
 import {
   escapeUnescapedTablePipes,
@@ -22,6 +24,7 @@ import {
   removeTableCol,
   removeTableRow,
 } from '../../lib/tableOps.ts'
+import { COMMON_CODE_LANGS } from './markdownDecorations.ts'
 
 export type TableOperation = 'addRow' | 'removeRow' | 'addColumn' | 'removeColumn'
 
@@ -427,9 +430,6 @@ const tableBlockDecorationField = StateField.define<DecorationSet>({
   ],
 })
 
-/** 表格 Block Widget 扩展；布局装饰由 StateField 直接提供。 */
-export const markdownBlockWidgetExtension: Extension = tableBlockDecorationField
-
 export class TableWidget extends WidgetType {
   readonly model: MarkdownTableModel
 
@@ -494,3 +494,294 @@ export class TableWidget extends WidgetType {
     return Math.max(72, (this.model.body.length + 2) * 30 + 24)
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* 代码块 Block Widget（Typora 式独立代码输入框，08-14）                   */
+/*                                                                     */
+/* 闭合围栏（``` lang ... ```）→ 常驻 nested CM6 编辑器。用户只编辑代码    */
+/* 内容（无围栏/无语言标记可见），变更偏移回外层源码；语言经 header select  */
+/* 改写 CodeInfo。未闭合围栏（输入中间态）由 markdownDecorations 兜底装饰。 */
+/* ------------------------------------------------------------------ */
+
+/** 闭合 FencedCode 的源码模型（范围均指向外层 EditorState.doc 绝对偏移） */
+export interface CodeBlockModel {
+  from: number
+  to: number
+  /** 开围栏 ``` 范围 */
+  openFrom: number
+  openTo: number
+  /** CodeInfo（语言）范围；null = 无语言 */
+  infoFrom: number | null
+  infoTo: number | null
+  /** 代码内容范围（可能为空范围） */
+  codeFrom: number
+  codeTo: number
+  /** 代码内容文本（nested editor 文档） */
+  code: string
+  /** 当前语言名（空串 = 无） */
+  lang: string
+  /** 节点全文（eq 对比用） */
+  text: string
+}
+
+/** 解析闭合围栏 FencedCode 节点；未闭合（无闭 CodeMark）返回 null → 装饰兜底 */
+export function parseFencedCode(state: EditorState, node: SyntaxNode): CodeBlockModel | null {
+  const marks = node.getChildren('CodeMark')
+  if (marks.length < 2) return null
+  const open = marks[0]
+  const info = node.getChild('CodeInfo')
+  const codeText = node.getChild('CodeText')
+  const codeFrom = codeText ? codeText.from : open.to
+  let codeTo = codeText ? codeText.to : open.to
+  // lezer 空代码块（```ts\n\n```）的 CodeText 含内容行尾换行（[6,7]="\n"）：
+  // 排除尾随 \n 使代码范围精确落在内容行内，保证 nested 同步 round-trip 稳定
+  let code = state.sliceDoc(codeFrom, codeTo)
+  if (code.endsWith('\n')) {
+    codeTo -= 1
+    code = code.slice(0, -1)
+  }
+  return {
+    from: node.from,
+    to: node.to,
+    openFrom: open.from,
+    openTo: open.to,
+    infoFrom: info ? info.from : null,
+    infoTo: info ? info.to : null,
+    codeFrom,
+    codeTo,
+    code,
+    lang: info ? state.sliceDoc(info.from, info.to) : '',
+    text: state.sliceDoc(node.from, node.to),
+  }
+}
+
+/** 将完整闭合 FencedCode 节点转换为 block replacement decoration。 */
+export function buildCodeBlockDecorations(state: EditorState): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>()
+  syntaxTree(state).iterate({
+    enter: (ref) => {
+      const node = ref.node
+      if (node.name !== 'FencedCode') return true
+      const model = parseFencedCode(state, node)
+      if (model) {
+        builder.add(node.from, node.to, Decoration.replace({ widget: new CodeBlockWidget(model), block: true }))
+      }
+      return false
+    },
+  })
+  return builder.finish()
+}
+
+const codeBlockDecorationField = StateField.define<DecorationSet>({
+  create: (state) => buildCodeBlockDecorations(state),
+  update: (decorations, transaction) =>
+    transaction.docChanged ? buildCodeBlockDecorations(transaction.state) : decorations.map(transaction.changes),
+  provide: (field) => [
+    EditorView.decorations.from(field),
+    EditorView.atomicRanges.of((view) => view.state.field(field)),
+  ],
+})
+
+/** 标记 nested 代码 → outer 文档的同步事务（防回写循环）。 */
+const codeSyncAnnotation = Annotation.define<boolean>()
+
+interface CodeBlockRuntime {
+  view: EditorView
+  widget: CodeBlockWidget
+  root: HTMLElement
+  nested: EditorView | null
+  nestedHost: HTMLElement | null
+  langSelect: HTMLSelectElement | null
+  syncing: boolean
+  onOuterMouseDown: (event: MouseEvent) => void
+}
+
+const codeRuntimeByRoot = new WeakMap<HTMLElement, CodeBlockRuntime>()
+
+/** nested 输入 → 同步到外层源码的 codeFrom~codeTo 范围 */
+function syncCodeChange(runtime: CodeBlockRuntime, nextCode: string): void {
+  const model = runtime.widget.model
+  runtime.syncing = true
+  try {
+    runtime.view.dispatch({
+      changes: { from: model.codeFrom, to: model.codeTo, insert: nextCode },
+      annotations: codeSyncAnnotation.of(true),
+      userEvent: 'input',
+    })
+  } finally {
+    runtime.syncing = false
+  }
+}
+
+/** 语言选择 → 改写围栏源码的 CodeInfo（无语言时在开围栏后插入） */
+function updateCodeLang(runtime: CodeBlockRuntime, lang: string): void {
+  const model = runtime.widget.model
+  const from = model.infoFrom ?? model.openTo
+  const to = model.infoTo ?? model.openTo
+  runtime.view.dispatch({
+    changes: { from, to, insert: lang },
+    userEvent: 'input',
+  })
+}
+
+function renderCodeBlock(runtime: CodeBlockRuntime): void {
+  const document = runtime.root.ownerDocument
+
+  const header = document.createElement('div')
+  header.className = 'sn-md-codeblock-header'
+  const sel = document.createElement('select')
+  sel.className = 'sn-lang-picker'
+  sel.setAttribute('aria-label', '代码块语言')
+  const none = document.createElement('option')
+  none.value = ''
+  none.textContent = '语言'
+  sel.appendChild(none)
+  for (const lang of COMMON_CODE_LANGS) {
+    const opt = document.createElement('option')
+    opt.value = lang
+    opt.textContent = lang
+    sel.appendChild(opt)
+  }
+  sel.value = runtime.widget.model.lang
+  sel.addEventListener('change', () => updateCodeLang(runtime, sel.value))
+  header.appendChild(sel)
+  runtime.root.appendChild(header)
+  runtime.langSelect = sel
+
+  const host = document.createElement('div')
+  host.className = 'sn-md-codeblock-body'
+  runtime.root.appendChild(host)
+  runtime.nestedHost = host
+
+  const nestedState = EditorState.create({
+    doc: runtime.widget.model.code,
+    extensions: [
+      history(),
+      EditorView.lineWrapping,
+      keymap.of([
+        {
+          key: 'Tab',
+          run: () => {
+            const view = runtime.nested
+            if (!view) return true
+            const { from, to } = view.state.selection.main
+            view.dispatch({
+              changes: { from, to, insert: '  ' },
+              selection: { anchor: from + 2 },
+              userEvent: 'input',
+            })
+            return true
+          },
+        },
+        {
+          key: 'Escape',
+          run: () => {
+            runtime.view.focus()
+            return true
+          },
+        },
+        ...historyKeymap,
+      ]),
+      EditorView.updateListener.of((update) => {
+        if (!update.docChanged || runtime.syncing || !runtime.nested) return
+        syncCodeChange(runtime, update.state.doc.toString())
+      }),
+    ],
+  })
+  runtime.nested = new EditorView({ state: nestedState, parent: host })
+
+  // 插入代码块后自动聚焦：光标位于代码范围（含空范围）→ nested 直接可输入
+  const { head } = runtime.view.state.selection.main
+  if (head >= runtime.widget.model.codeFrom && head <= runtime.widget.model.codeTo) {
+    queueMicrotask(() => runtime.nested?.focus())
+  }
+}
+
+export class CodeBlockWidget extends WidgetType {
+  readonly model: CodeBlockModel
+
+  constructor(model: CodeBlockModel) {
+    super()
+    this.model = model
+  }
+
+  eq(other: CodeBlockWidget): boolean {
+    return this.model.from === other.model.from && this.model.text === other.model.text
+  }
+
+  ignoreEvent(): boolean {
+    return true
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    const root = view.dom.ownerDocument.createElement('div')
+    root.className = 'sn-md-codeblock-widget'
+    root.dataset.codeFrom = String(this.model.from)
+    root.dataset.codeTo = String(this.model.to)
+    const runtime: CodeBlockRuntime = {
+      view,
+      widget: this,
+      root,
+      nested: null,
+      nestedHost: null,
+      langSelect: null,
+      syncing: false,
+      onOuterMouseDown: () => {},
+    }
+    runtime.onOuterMouseDown = (event) => {
+      // 点击代码块内部（语言选择器除外）→ 聚焦 nested 输入框
+      const target = event.target as HTMLElement
+      if (root.contains(target) && !target.closest('.sn-lang-picker')) {
+        runtime.nested?.focus()
+      }
+    }
+    view.dom.addEventListener('mousedown', runtime.onOuterMouseDown, true)
+    codeRuntimeByRoot.set(root, runtime)
+    renderCodeBlock(runtime)
+    return root
+  }
+
+  updateDOM(dom: HTMLElement, view: EditorView): boolean {
+    const runtime = codeRuntimeByRoot.get(dom)
+    if (!runtime || runtime.widget.model.text === this.model.text) return false
+    runtime.view = view
+    runtime.widget = this
+    dom.dataset.codeFrom = String(this.model.from)
+    dom.dataset.codeTo = String(this.model.to)
+    // 语言变化 → 同步 select 值
+    if (runtime.langSelect && runtime.langSelect.value !== this.model.lang) {
+      runtime.langSelect.value = this.model.lang
+    }
+    // 代码内容变化（外部编辑/撤销）→ 同步 nested 文档
+    if (runtime.nested && runtime.nested.state.doc.toString() !== this.model.code) {
+      runtime.syncing = true
+      try {
+        runtime.nested.dispatch({
+          changes: { from: 0, to: runtime.nested.state.doc.length, insert: this.model.code },
+        })
+      } finally {
+        runtime.syncing = false
+      }
+    }
+    return true
+  }
+
+  destroy(dom: HTMLElement): void {
+    const runtime = codeRuntimeByRoot.get(dom)
+    if (!runtime) return
+    if (runtime.nested) {
+      runtime.nested.destroy()
+      runtime.nested = null
+    }
+    runtime.view.dom.removeEventListener('mousedown', runtime.onOuterMouseDown, true)
+    codeRuntimeByRoot.delete(dom)
+  }
+
+  get estimatedHeight(): number {
+    const lines = this.model.code ? this.model.code.split('\n').length : 1
+    return Math.max(72, lines * 22 + 36)
+  }
+}
+
+/** 表格 + 代码块 Block Widget 扩展；布局装饰由 StateField 直接提供。 */
+export const markdownBlockWidgetExtension: Extension = [tableBlockDecorationField, codeBlockDecorationField]

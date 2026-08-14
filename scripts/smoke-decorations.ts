@@ -10,7 +10,10 @@ import { markdown } from '@codemirror/lang-markdown'
 import { GFM } from '@lezer/markdown'
 import type { Decoration, DecorationSet } from '@codemirror/view'
 import { buildDecorations } from '../src/components/Editor/markdownDecorations.ts'
-import { buildTableBlockDecorations } from '../src/components/Editor/markdownBlockWidgets.ts'
+import {
+  buildCodeBlockDecorations,
+  buildTableBlockDecorations,
+} from '../src/components/Editor/markdownBlockWidgets.ts'
 
 /** 语法树驱动装饰依赖 language 扩展：state 需挂 markdown+GFM（与编辑器运行时一致） */
 const LANG_EXT = [markdown({ extensions: [GFM] })]
@@ -81,24 +84,57 @@ function main() {
     ok('标题：光标行淡色标记 / 非光标行隐藏 + 级别样式')
   }
 
-  // 2. 粗体/斜体/行内代码/链接
+  // 2. 粗体/斜体/行内代码/删除线/链接（非光标行标记隐藏，光标行淡色）
   {
     const l4 = lineAt(4)
     const seg = l4.text
     const base = l4.from
     const boldStart = seg.indexOf('**加粗**')
-    assert.equal(clsAt(items, base + boldStart).includes('sn-md-dim'), true, '粗体起始标记淡色')
+    assert.equal(clsAt(items, base + boldStart).includes('sn-md-hidden'), true, '非光标行粗体起始标记隐藏')
     assert.equal(clsAt(items, base + boldStart + 2).includes('sn-md-bold'), true, '粗体内容')
     const italicStart = seg.indexOf('*斜体*')
+    assert.equal(clsAt(items, base + italicStart).includes('sn-md-hidden'), true, '非光标行斜体起始标记隐藏')
     assert.equal(clsAt(items, base + italicStart + 1).includes('sn-md-italic'), true, '斜体内容')
     const codeStart = seg.indexOf('`行内代码`')
-    assert.equal(clsAt(items, base + codeStart).includes('sn-md-dim'), true, '行内码起始反引号淡色')
+    assert.equal(clsAt(items, base + codeStart).includes('sn-md-hidden'), true, '非光标行行内码起始反引号隐藏')
     assert.equal(clsAt(items, base + codeStart + 1).includes('sn-md-code'), true, '行内码内容')
     const linkStart = seg.indexOf('[链接](https://a.b)')
     assert.equal(clsAt(items, base + linkStart).includes('sn-md-dim'), true, '链接 [ 淡色')
     assert.equal(clsAt(items, base + linkStart + 1).includes('sn-md-link'), true, '链接文本样式')
     assert.equal(clsAt(items, base + linkStart + 3 + 6).includes('sn-md-dim'), true, '链接 ](url) 淡色')
-    ok('行内：粗体/斜体/行内代码/链接，标记淡色 + 内容样式')
+
+    // 光标行（anchor 在 l4）：标记淡色显示（编辑定位需要）
+    const cursorState = EditorState.create({
+      doc,
+      selection: { anchor: base + boldStart + 1 },
+      extensions: LANG_EXT,
+    })
+    const cursorItems = collect(buildDecorations(cursorState))
+    assert.equal(clsAt(cursorItems, base + boldStart).includes('sn-md-dim'), true, '光标行粗体标记淡色')
+    ok('行内：粗体/斜体/行内代码/链接，非光标行标记隐藏 + 光标行淡色 + 内容样式')
+  }
+
+  // 2b. 删除线（GFM ~~）：非光标行标记隐藏，内容删除线样式
+  {
+    const strikeDoc = ['删除线 ~~划掉~~ 内容', '', ''].join('\n')
+    const strikeState = EditorState.create({
+      doc: strikeDoc,
+      selection: { anchor: strikeDoc.length },
+      extensions: LANG_EXT,
+    })
+    const strikeItems = collect(buildDecorations(strikeState))
+    const line = strikeState.doc.line(1)
+    const start = line.text.indexOf('~~')
+    assert.equal(clsAt(strikeItems, line.from + start).includes('sn-md-hidden'), true, '非光标行删除线起始标记隐藏')
+    assert.equal(clsAt(strikeItems, line.from + start + 2).includes('sn-md-strike'), true, '删除线内容样式')
+    const strikeCursorState = EditorState.create({
+      doc: strikeDoc,
+      selection: { anchor: line.from + start + 3 },
+      extensions: LANG_EXT,
+    })
+    const strikeCursorItems = collect(buildDecorations(strikeCursorState))
+    assert.equal(clsAt(strikeCursorItems, line.from + start).includes('sn-md-dim'), true, '光标行删除线标记淡色')
+    ok('删除线：非光标行标记隐藏 + 光标行淡色 + 内容删除线')
   }
 
   // 3. 列表标记 + 任务复选框 Widget
@@ -156,36 +192,26 @@ function main() {
     ok('分隔线：--- 渲染为水平线')
   }
 
-  // 6. 围栏代码块：非编辑上下文隐藏围栏，代码内容保持等宽背景
+  // 6. 围栏代码块：闭合 → Block Widget 承载（Typora 式独立输入框）；未闭合 → 装饰兜底
   {
     const l14 = lineAt(15)
-    assert.equal(clsAt(items, l14.from).includes('sn-md-hidden'), true, '非编辑态开围栏隐藏')
-    const l15 = lineAt(16)
-    assert.equal(clsAt(items, l15.from).includes('sn-md-codeblock'), true, '代码内容行样式')
     const l16 = lineAt(17)
-    assert.equal(clsAt(items, l16.from).includes('sn-md-hidden'), true, '非编辑态闭围栏隐藏')
+    const codeWidgets = collect(buildCodeBlockDecorations(state))
+    const widgetItem = codeWidgets.find((i) => i.from === l14.from)
+    assert.equal(widgetItem?.widget?.constructor.name === 'CodeBlockWidget', true, '闭合代码块 → CodeBlockWidget')
+    assert.equal(widgetItem?.from, l14.from, 'widget 起点 = 开围栏行首')
+    assert.equal(widgetItem?.to, l16.to, 'widget 终点 = 闭围栏行尾')
 
-    const activeCodeState = EditorState.create({
-      doc,
-      selection: { anchor: l15.from + 2 },
-      extensions: LANG_EXT,
-    })
-    const activeCodeItems = collect(buildDecorations(activeCodeState))
-    assert.equal(clsAt(activeCodeItems, l14.from).includes('sn-md-fence'), true, '编辑代码块时显示开围栏')
-    assert.equal(clsAt(activeCodeItems, l16.from).includes('sn-md-fence'), true, '编辑代码块时显示闭围栏')
-
-    const noLangState = EditorState.create({
-      doc: '```\n代码\n```',
+    // 未闭合（输入中间态，无闭围栏）：装饰兜底（代码内容背景），不 widget 化
+    const unclosedState = EditorState.create({
+      doc: '```js\nconst a = 1',
       selection: { anchor: 0 },
       extensions: LANG_EXT,
     })
-    const noLangItems = collect(buildDecorations(noLangState))
-    assert.equal(
-      noLangItems.some((item) => item.widget?.constructor.name === 'LangPickerWidget'),
-      true,
-      '无语言围栏也显示 point language picker',
-    )
-    ok('代码块：非编辑态隐藏围栏 / 编辑态显示 + 内容等宽背景 + 空语言选择器')
+    const unclosedItems = collect(buildDecorations(unclosedState))
+    assert.equal(clsAt(unclosedItems, 8).includes('sn-md-codeblock'), true, '未闭合围栏代码内容装饰兜底')
+    assert.equal(collect(buildCodeBlockDecorations(unclosedState)).length, 0, '未闭合 → 不 widget 化')
+    ok('代码块：闭合 widget 化 / 未闭合装饰兜底')
   }
 
   // 7. 光标移到非标题行：所有标题标记隐藏（光标行机制重算）
