@@ -81,3 +81,35 @@ index 67f18b3..f956abd 100644
                      }
                      else {
                          // Ordered list (or anything else with a non-standard
+diff --git a/node_modules/@atomic-editor/editor/dist/image-blocks.js b/node_modules/@atomic-editor/editor/dist/image-blocks.js
+index 67f18b3..f956abd 100644
+--- a/node_modules/@atomic-editor/editor/dist/image-blocks.js
++++ b/node_modules/@atomic-editor/editor/dist/image-blocks.js
+@@ -56,7 +56,26 @@
+     toDOM(view) {
+         const wrap = document.createElement('div');
+         wrap.className = 'cm-atomic-image';
+         const img = document.createElement('img');
++        // utools-db:// 附件引用（SourceNote 粘贴图片写入 utools.db 附件）：异步读
++        // 附件转 Blob → objectURL 显示；非 uTools 环境（dev/浏览器）不设 src（占位）。
++        // 常规路径/data URL 保持原行为。
++        const dbId = this.src.startsWith('utools-db://')
++            ? this.src.slice('utools-db://'.length)
++            : null;
++        if (dbId) {
++            const getAttachment = globalThis.utools?.db?.promises?.getAttachment;
++            if (getAttachment) {
++                getAttachment(dbId)
++                    .then((buf) => {
++                        const bytes = buf instanceof ArrayBuffer ? buf : (buf == null ? void 0 : buf.buffer) ?? buf;
++                        img.src = URL.createObjectURL(new Blob([bytes]));
++                    })
++                    .catch(() => { });
++            }
++        }
++        else {
++            img.src = this.src;
++        }
+-        img.src = this.src;
+         img.alt = this.alt;
+         img.loading = 'lazy';

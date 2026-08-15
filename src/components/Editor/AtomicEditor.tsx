@@ -20,6 +20,7 @@
  * 之后编辑器为真相源，updateListener docChanged → onChange 回写（NoteView 防抖保存不变）。
  */
 import { memo, useEffect, useImperativeHandle, useMemo, useRef, forwardRef } from 'react'
+import { toast } from 'sonner'
 import {
   drawSelection,
   dropCursor,
@@ -323,8 +324,9 @@ const AtomicEditor = memo(
       viewRef.current = view
       if (autoFocus) view.focus()
 
-      // 图片粘贴：Ctrl+V 剪贴板图片 → data URL 插入 `![图片](data:...)`（与 pickImageFile
-      // 浏览器降级一致，避免 blob URL 内存驻留）；非图片粘贴不拦截，走 CM6 默认行为。
+      // 图片粘贴：uTools 环境写入 db 附件（markdown 用短引用 utools-db://img/<id>，
+      // 避免全屏截图 base64 内嵌的超长源码）；浏览器环境（dev/headless）降级
+      // data URL（可显示、可测试）。非图片粘贴不拦截，走 CM6 默认行为。
       const handlePaste = (e: ClipboardEvent) => {
         if (view.state.readOnly) return
         const items = e.clipboardData?.items
@@ -338,16 +340,50 @@ const AtomicEditor = memo(
         }
         if (!file) return
         e.preventDefault()
-        const reader = new FileReader()
-        reader.onload = () => {
-          if (typeof reader.result !== 'string') return
+        const insert = (text: string) => {
           const { head } = view.state.selection.main
-          const text = `![图片](${reader.result})`
           view.dispatch({
             changes: { from: head, to: head, insert: text },
             selection: { anchor: head + text.length },
           })
           view.focus()
+        }
+        const db = (
+          globalThis as unknown as {
+            utools?: {
+              db?: {
+                promises?: {
+                  postAttachment?: (
+                    id: string,
+                    data: ArrayBuffer,
+                    type: string,
+                  ) => Promise<{ ok: boolean; id?: string }>
+                }
+              }
+            }
+          }
+        ).utools?.db?.promises?.postAttachment
+        if (db) {
+          file
+            .arrayBuffer()
+            .then((buffer) =>
+              db(`img/${crypto.randomUUID()}`, buffer, file.type).then((res) => ({ res, buffer })),
+            )
+            .then(({ res }) => {
+              if (!res.ok) {
+                toast.error('图片保存失败（附件可能超过 10M 上限）')
+                return
+              }
+              insert(`![图片](utools-db://${res.id})`)
+            })
+            .catch(() => toast.error('图片保存失败'))
+          return
+        }
+        // 浏览器降级：data URL（与 pickImageFile 降级一致，避免 blob URL 内存驻留）
+        const reader = new FileReader()
+        reader.onload = () => {
+          if (typeof reader.result !== 'string') return
+          insert(`![图片](${reader.result})`)
         }
         reader.readAsDataURL(file)
       }
