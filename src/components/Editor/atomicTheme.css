@@ -34,6 +34,39 @@
   --atomic-editor-selection-bg: var(--editor-accent-45);
   --atomic-editor-search-bg: var(--editor-muted-55);
   --atomic-editor-search-bg-active: var(--editor-accent-45);
+  /* 亮色代码 token 色板（GitHub 亮色深色值；暗色不定义 → 回落 Palenight 默认） */
+  --atomic-editor-hl-keyword: #8250df;
+  --atomic-editor-hl-string: #0a7b36;
+  --atomic-editor-hl-number: #c4541e;
+  --atomic-editor-hl-comment: #6e7781;
+  --atomic-editor-hl-type: #953800;
+  --atomic-editor-hl-function: #0550ae;
+  --atomic-editor-hl-property: #0550ae;
+  --atomic-editor-hl-regexp: #cf222e;
+  --atomic-editor-hl-escape: #0550ae;
+  --atomic-editor-hl-tag: #cf222e;
+  --atomic-editor-hl-variable: #24292f;
+  --atomic-editor-hl-operator: #0550ae;
+  --atomic-editor-hl-invalid: #cf222e;
+  /* 围栏语言标签（CodeInfo）chip：亮色深蓝文字 + 浅蓝底 */
+  --editor-code-info: #0b66d6;
+  --editor-code-info-bg: rgba(11, 102, 214, 0.1);
+}
+
+/* 暗色语言标签：浅蓝文字 + 半透明白底 */
+.dark .atomic-cm-editor {
+  --editor-code-info: #7cb2f0;
+  --editor-code-info-bg: rgba(255, 255, 255, 0.1);
+}
+
+/* 围栏语言标签 chip（patch：CodeInfo 独立 class，见 inline-preview.js INLINE_MARK_CLASS） */
+.cm-atomic-code-info {
+  color: var(--editor-code-info);
+  background: var(--editor-code-info-bg);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-weight: 500;
+  margin-right: 0.3em;
 }
 
 /* ---- 自研公式装饰（R5：间距由块 padding 统一，KaTeX 自带 margin 归零——块与上/下
@@ -89,6 +122,23 @@
   color: var(--foreground);
   transform: scale(1.3);
   transform-origin: center;
+}
+
+/* ---- 列表符号层级微调：二级 ○ 缩小至与一级 ● 视觉接近；三级 ■ 垂直居中
+   （depth 由 patch 的 BulletWidget data-depth 提供） ---- */
+.cm-atomic-bullet[data-depth='1'] {
+  font-size: 0.7em;
+}
+.cm-atomic-bullet[data-depth='2'] {
+  transform: scale(1.3) translateY(0.08em);
+}
+
+/* ---- 待办完成态：整行灰底 + 文字灰色（保留删除线），未完成行不变 ---- */
+.cm-line.cm-atomic-task-done {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  border-radius: 0.3em;
+  text-decoration: line-through;
 }
 
 /* ---- 标题字号增大 + 上下间距扩大 + 底部细线（R5 迭代：字号再增、分割线与正文留白） ---- */

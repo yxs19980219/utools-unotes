@@ -36,7 +36,7 @@ import {
   EditorState,
   Prec,
 } from '@codemirror/state'
-import { indentOnInput, LanguageDescription, syntaxTree } from '@codemirror/language'
+import { indentOnInput, syntaxTree, type LanguageDescription } from '@codemirror/language'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { markdown, markdownKeymap, markdownLanguage } from '@codemirror/lang-markdown'
@@ -53,6 +53,7 @@ import {
   startAsteriskList,
   tables,
 } from '@atomic-editor/editor'
+import { ATOMIC_CODE_LANGUAGES } from '@atomic-editor/editor/code-languages'
 import '@atomic-editor/editor/styles.css'
 
 import { cn } from '@/lib/utils'
@@ -161,41 +162,8 @@ interface AtomicEditorProps {
   readOnly?: boolean
 }
 
-/** 已安装的 @codemirror/lang-*（围栏语法高亮用；勿引入未安装包） */
-const CODE_LANGUAGES: readonly LanguageDescription[] = [
-  LanguageDescription.of({
-    name: 'JavaScript',
-    alias: ['js', 'jsx'],
-    extensions: ['js', 'mjs', 'cjs', 'jsx'],
-    load: () => import('@codemirror/lang-javascript').then((m) => m.javascript({ jsx: true })),
-  }),
-  LanguageDescription.of({
-    name: 'TypeScript',
-    alias: ['ts', 'tsx'],
-    extensions: ['ts', 'mts', 'cts', 'tsx'],
-    load: () =>
-      import('@codemirror/lang-javascript').then((m) =>
-        m.javascript({ typescript: true, jsx: true }),
-      ),
-  }),
-  LanguageDescription.of({
-    name: 'HTML',
-    alias: ['htm'],
-    extensions: ['html', 'htm'],
-    load: () => import('@codemirror/lang-html').then((m) => m.html()),
-  }),
-  LanguageDescription.of({
-    name: 'CSS',
-    extensions: ['css'],
-    load: () => import('@codemirror/lang-css').then((m) => m.css()),
-  }),
-  LanguageDescription.of({
-    name: 'Markdown',
-    alias: ['md'],
-    extensions: ['md', 'markdown', 'mkd'],
-    load: () => import('@codemirror/lang-markdown').then((m) => m.markdown()),
-  }),
-]
+/** 围栏语法高亮：复用 atomic 的 21 种开箱即用语言（@codemirror/lang-* + legacy-modes） */
+const CODE_LANGUAGES: readonly LanguageDescription[] = ATOMIC_CODE_LANGUAGES
 
 /**
  * R1：空引用行行尾 Enter 退出引用（Obsidian 标准，Enter 两次）——lang-markdown 的
@@ -355,7 +323,38 @@ const AtomicEditor = memo(
       viewRef.current = view
       if (autoFocus) view.focus()
 
+      // 图片粘贴：Ctrl+V 剪贴板图片 → data URL 插入 `![图片](data:...)`（与 pickImageFile
+      // 浏览器降级一致，避免 blob URL 内存驻留）；非图片粘贴不拦截，走 CM6 默认行为。
+      const handlePaste = (e: ClipboardEvent) => {
+        if (view.state.readOnly) return
+        const items = e.clipboardData?.items
+        if (!items) return
+        let file: File | null = null
+        for (const item of items) {
+          if (item.kind === 'file' && item.type.startsWith('image/')) {
+            file = item.getAsFile()
+            break
+          }
+        }
+        if (!file) return
+        e.preventDefault()
+        const reader = new FileReader()
+        reader.onload = () => {
+          if (typeof reader.result !== 'string') return
+          const { head } = view.state.selection.main
+          const text = `![图片](${reader.result})`
+          view.dispatch({
+            changes: { from: head, to: head, insert: text },
+            selection: { anchor: head + text.length },
+          })
+          view.focus()
+        }
+        reader.readAsDataURL(file)
+      }
+      view.dom.addEventListener('paste', handlePaste)
+
       return () => {
+        view.dom.removeEventListener('paste', handlePaste)
         viewRef.current = null
         view.destroy()
       }

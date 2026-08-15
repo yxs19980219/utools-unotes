@@ -2,6 +2,18 @@ diff --git a/node_modules/@atomic-editor/editor/dist/inline-preview.js b/node_mo
 index 67f18b3..f956abd 100644
 --- a/node_modules/@atomic-editor/editor/dist/inline-preview.js
 +++ b/node_modules/@atomic-editor/editor/dist/inline-preview.js
+@@ -198,8 +198,11 @@
+ const INLINE_MARK_CLASS = {
+     StrongEmphasis: 'cm-atomic-strong',
+     Emphasis: 'cm-atomic-em',
+     InlineCode: 'cm-atomic-inline-code',
+     Strikethrough: 'cm-atomic-strike',
+     Highlight: 'cm-atomic-highlight',
+     Link: 'cm-atomic-link',
++    // CodeInfo (fence language tag) gets its own class so the project can
++    // style it as a chip without hitting CodeMark (t.meta covers both).
++    CodeInfo: 'cm-atomic-code-info',
+ };
 @@ -218,8 +218,17 @@ function linkDestinationUrl(link, doc) {
          .find((url) => url.from >= labelClose.to) ?? null);
  }
@@ -22,13 +34,14 @@ index 67f18b3..f956abd 100644
      }
      toDOM() {
          // The `.cm-atomic-list-marker` class is what forces the
-@@ -228,14 +237,14 @@ class BulletWidget extends WidgetType {
+@@ -228,14 +237,15 @@ class BulletWidget extends WidgetType {
          // layers on bullet-specific color / weight.
          const span = document.createElement('span');
          span.className = 'cm-atomic-list-marker cm-atomic-bullet';
 -        span.textContent = '•';
 +        // 列表标记按层级循环：depth 0 实心圆 •、1 空心圆 ○、2 实心方形 ▪、≥3 循环
 +        span.textContent = ['•', '○', '▪'][this.depth % 3];
++        span.dataset.depth = String(this.depth);
          return span;
      }
      ignoreEvent() {
