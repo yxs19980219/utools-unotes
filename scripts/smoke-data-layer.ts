@@ -145,35 +145,24 @@ async function main() {
 
   const ctx = { notes: await listNotes(), objects: await listObjects(), tags: await listTags() }
 
-  assert.deepEqual(tokenize('type:book 注意力 #深度学习'), {
-    sourceType: 'book',
+  assert.deepEqual(tokenize('注意力 #深度学习'), {
     tagTexts: ['深度学习'],
     keywords: ['注意力'],
   })
   ok('tokenize 组合语法')
 
-  const r1 = searchNotes('type:book 注意力', ctx)
-  assert.equal(r1.length, 1)
-  assert.equal(r1[0].note.title, '注意力与变压器')
-  assert.ok(r1[0].score > 0, '关键词相关度 > 0')
-  ok('type:book 注意力 → 仅 book 来源且命中')
-
-  const r2 = searchNotes('type:bo', ctx) // 前缀匹配
-  assert.equal(r2.length, 2, 'type:bo 前缀命中 book 对象下 2 条')
-  ok('type:bo 前缀匹配')
+  const r1 = searchNotes('注意力', ctx)
+  assert.equal(r1.length, 2, '裸词命中 book 与 video 各 1 条')
+  const bookHit = r1.find((r) => r.object?.sourceType === 'book')
+  const videoHit = r1.find((r) => r.object?.sourceType === 'video')
+  assert.ok(bookHit && videoHit, '跨来源命中')
+  assert.ok(bookHit!.score > videoHit!.score, '标题命中 > 正文命中')
+  ok('裸词跨对象命中 + 相关度排序')
 
   const r3 = searchNotes('#深度学习', ctx)
   assert.equal(r3.length, 1, '标签过滤命中 1 条')
   assert.ok(r3[0].tagMatches.includes(tagId), 'tagMatches 携带命中 tagId')
   ok('#深度学习 标签过滤')
-
-  const r4 = searchNotes('注意力', ctx)
-  assert.equal(r4.length, 2, '裸词命中 book 与 video 各 1 条')
-  const bookHit = r4.find((r) => r.object?.sourceType === 'book')
-  const videoHit = r4.find((r) => r.object?.sourceType === 'video')
-  assert.ok(bookHit && videoHit, '跨来源命中')
-  assert.ok(bookHit!.score > videoHit!.score, '标题命中 > 正文命中')
-  ok('裸词跨对象命中 + 相关度排序')
 
   const r5 = searchNotes('#不存在的标签', ctx)
   assert.equal(r5.length, 0)

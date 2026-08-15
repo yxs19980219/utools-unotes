@@ -2,7 +2,6 @@
  * services/search.ts —— 语法解析 + 内存全文搜索（design.md 第 4 节）
  *
  * 语法（自研轻量 tokenizer）：
- *   type:x    来源类型精确匹配，x 支持前缀匹配（type:bo → book）
  *   #x        标签匹配（name 或 aliases 模糊子串）
  *   裸词      标题/标签/正文全文子串匹配（小写化）
  *   （可组合，空格分隔，全部为 AND 语义）
@@ -31,7 +30,6 @@ export interface SearchResult {
 }
 
 export interface SearchTokens {
-  sourceType?: string
   tagTexts: string[]
   keywords: string[]
 }
@@ -41,9 +39,7 @@ export function tokenize(query: string): SearchTokens {
   const tokens = query.trim().split(/\s+/).filter(Boolean)
   const out: SearchTokens = { tagTexts: [], keywords: [] }
   for (const tok of tokens) {
-    if (tok.toLowerCase().startsWith('type:')) {
-      out.sourceType = tok.slice('type:'.length).toLowerCase()
-    } else if (tok.startsWith('#')) {
+    if (tok.startsWith('#')) {
       out.tagTexts.push(tok.slice(1).toLowerCase())
     } else {
       out.keywords.push(tok.toLowerCase())
@@ -72,11 +68,7 @@ function matchesTagText(tag: Tag, text: string): boolean {
 /** 全文搜索：tokenizer + 内存过滤 + 相关度排序 */
 export function searchNotes(query: string, ctx: SearchContext): SearchResult[] {
   const tokens = tokenize(query)
-  if (
-    tokens.sourceType === undefined &&
-    tokens.tagTexts.length === 0 &&
-    tokens.keywords.length === 0
-  ) {
+  if (tokens.tagTexts.length === 0 && tokens.keywords.length === 0) {
     return []
   }
 
@@ -86,13 +78,6 @@ export function searchNotes(query: string, ctx: SearchContext): SearchResult[] {
   const results: SearchResult[] = []
   for (const note of ctx.notes) {
     const object = objectById.get(note.objectId) ?? null
-
-    // type:x —— 来源类型前缀匹配
-    if (tokens.sourceType !== undefined) {
-      if (!object || !object.sourceType.toLowerCase().startsWith(tokens.sourceType)) {
-        continue
-      }
-    }
 
     // #x —— 每个标签词须命中 note 的某个标签（name/aliases 模糊），AND
     const tagMatches = new Set<string>()

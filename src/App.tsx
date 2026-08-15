@@ -45,7 +45,7 @@ export default function App() {
             useUiStore.getState().setSearch(q.length > 0, q)
           }, 200)
         },
-        '搜索：type:book 关键词 #标签',
+        '搜索：关键词 #标签',
       )
     }
     return () => {
