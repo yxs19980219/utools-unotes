@@ -236,13 +236,39 @@ File: `src/components/Editor/extensions/underlineDecoration.ts`
   浏览器降级一致，避免 blob URL 内存驻留）→ 插入 `![图片](data:...)`；非图片不拦截
   （preventDefault 仅命中图片时调用）；readOnly 时跳过。
 
+### 图片附件模式（08-15 迭代：data URL → utools.db 附件）
+
+- **动机**：Windows 全屏截图 PNG 2-5MB，base64 内嵌使 markdown 源码超长。
+- **写入**（AtomicEditor.tsx paste handler）：uTools 环境（`utools.db.promises.postAttachment`
+  存在）→ `file.arrayBuffer()` → `postAttachment('img/<uuid>', buffer, file.type)` → 成功插入
+  `![图片](utools-db://img/<uuid>)`（短引用，id = 附件文档 _id）；失败（10M 上限等）→
+  toast.error 不插入；浏览器环境降级 data URL。
+- **渲染**（patch image-blocks.js ImageWidget.toDOM）：src 以 `utools-db://` 开头 →
+  `utools.db.promises.getAttachment(id)` → Uint8Array/ArrayBuffer → `Blob` → `URL.createObjectURL`
+  异步设置 img.src；非 uTools 环境不设 src（占位不崩）；常规路径/data URL 走原逻辑。
+- **边界**：附件 doc 与笔记 doc 独立，删除笔记不清理附件（孤儿可接受）；附件随 db 跨设备
+  同步，`utools-db://` 引用其他设备可渲染；10M 上限由 postAttachment 失败兜底。
+- **测试**：动态注入 `window.utools` mock（应用走 MemoryDb 后注入，避免破坏 bootstrap），
+  断言 postAttachment 调用 + 短引用 + img.src 为 blob: URL。
+
 ## 待办完成态与列表符号（08-15 任务）
 
-- 完成态整行灰底：覆盖 `.cm-line.cm-atomic-task-done`（bg `--muted` + 文字 `--muted-foreground` +
-  删除线），行背景不参与 CM6 高度测量，安全。
+- 完成态：**框体与文字变灰**（checkbox `:checked` 背景/边框 → `--muted-foreground` +
+  文字灰 + 删除线），**不要整行背景**（用户 08-15 澄清"灰底指框和文字"）。
 - 列表符号按层级：patch 的 `BulletWidget` 输出 `data-depth` 属性（`span.dataset.depth`），
-  CSS 用 `[data-depth]` 选择器微调（`○` 缩小 font-size、`▪` translateY 居中）；alcove 固定宽度
-  （0.9em）不动，缩进/包裹不回归。
+  CSS 用 `[data-depth]` 选择器微调；alcove 固定宽度（0.9em）不动，缩进/包裹不回归。
+
+### 列表缩进对齐（08-15 实测修复，重要）
+
+- **根因 1**：`.cm-atomic-list-marker` 的 `width: 0.9em` 对 inline-block 不生效——CSS 规范
+  min-content 规则（宽度 = max(min-content, min(width, max-content))），实际宽度 = 字符宽。
+  修复：`min-width: 0.9em` 强制固定 alcove。
+- **根因 2**：marker 用 `font-size` 缩小（○ 0.7em）会使 **em 基准漂移**——`min-width: 0.9em`
+  基于元素自身字号计算（0.9em × 11.9px = 10.7px），alcove 又不统一。修复：改用
+  `transform: scale()` 缩小视觉（不影响布局宽度与 em 基准），`[data-depth='1'] { transform: scale(0.91) }`
+  （0.91 ≈ 原 0.7em 视觉比）。
+- 验证方法：Playwright 量各级 marker 的 `getBoundingClientRect().x` 与文字起点差值
+  （统一后每级 ≈ LIST_LEVEL_EM 视觉值，±1px）。
 
 ## patch 文件维护硬规则（踩坑记录）
 
@@ -252,9 +278,16 @@ File: `src/components/Editor/extensions/underlineDecoration.ts`
   漏算会导致 `hunk header integrity check failed`。
 - **行尾统一 LF + 文件末尾留换行**：Windows 下 edit 工具写 CRLF、PowerShell Add-Content 混行尾，
   patch-package 解析器把 CRLF 空行当 context（`"\r"` 是 context 类型）→ 校验失败。
+- **diff 格式前缀**：hunk body 的 context 行以 `空格+原文`、删除行以 `-+原文` 开头；直接用
+  源码行拼接时必须补前缀（漏补 context 前缀空格 → reverse 应用失败，逐字节对比才能发现）。
+- **被替换的行是 deletion 不是 context**：如 `img.src = this.src;` 被 else 分支替换时，
+  原行是 `-img.src...`，新文件对应行在插入段里——body 构造必须 `4C + N插入 + 1删除 + 2C`，
+  不要用「旧行 slice 尾部当 context」（行数对不上且语义错）。
 - **验证命令**：`git apply --reverse --check patches/xxx.patch`（node_modules 已应用补丁时
   reverse 完全匹配 = patch 与磁盘一致）；`npx patch-package` 确认可应用。
-- 改 node_modules 后需删 `node_modules/.vite` 重启 dev server（见上 dev 缓存坑）。
+- 改 node_modules 后需删 `node_modules/.vite` 重启 dev server（见上 dev 缓存坑）；
+  杀 dev server 要用**端口定位**（`Get-NetTCPConnection -LocalPort 5173`），
+  按命令行正则匹配进程在 Windows 上不可靠。
 
 ## 体积
 
