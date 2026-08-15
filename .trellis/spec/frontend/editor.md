@@ -215,6 +215,47 @@ File: `src/components/Editor/extensions/underlineDecoration.ts`
 - **光标行揭示**：autoFocus 光标在首行 → 首行公式不渲染；重开断言前先 `Control+End` 跳末尾
 - **block widget**：替换范围严禁含换行符（见 mathExtension 备注）
 
+## 代码高亮与语言标签（08-15 任务）
+
+- **围栏语言**：用 `@atomic-editor/editor/code-languages` 的 `ATOMIC_CODE_LANGUAGES`（21 种 ≈ TOP20），
+  不要自建 `CODE_LANGUAGES` 列表。它动态 import 的 11 个可选包必须显式安装：
+  `@codemirror/lang-{python,go,rust,java,cpp,php,sql,xml,json,yaml} @codemirror/legacy-modes`
+  （optional peerDependencies，不装则对应语言无高亮；Rollup 自动分包懒加载）。
+- **代码 token 色板**：atomic 默认 Palenight（暗背景色），亮色需在 `.atomic-cm-editor` 定义
+  `--atomic-editor-hl-*`（GitHub 亮色系深色值）；暗色不定义 → 回落默认。
+- **语言标签（CodeInfo）chip**：`t.meta` 同时覆盖 CodeMark（```）与 CodeInfo，HighlightStyle
+  无法区分 → **必须走 patch**：`INLINE_MARK_CLASS` 加 `CodeInfo: 'cm-atomic-code-info'`，
+  项目 CSS（atomicTheme.css）用 `.cm-atomic-code-info` 定义 chip（背景/圆角/颜色），
+  亮暗双态用 `--editor-code-info*` 变量。
+
+## 图片粘贴（08-15 任务）
+
+- 原子编辑器无内置粘贴处理：imageBlocks() 只渲染已有 `![alt](url)` 语法。
+- 自研：`view.dom` 挂 `paste` 监听（destroy 时移除），`clipboardData.items` 找
+  `kind==='file' && type.startsWith('image/')` → FileReader 转 **data URL**（与 pickImageFile
+  浏览器降级一致，避免 blob URL 内存驻留）→ 插入 `![图片](data:...)`；非图片不拦截
+  （preventDefault 仅命中图片时调用）；readOnly 时跳过。
+
+## 待办完成态与列表符号（08-15 任务）
+
+- 完成态整行灰底：覆盖 `.cm-line.cm-atomic-task-done`（bg `--muted` + 文字 `--muted-foreground` +
+  删除线），行背景不参与 CM6 高度测量，安全。
+- 列表符号按层级：patch 的 `BulletWidget` 输出 `data-depth` 属性（`span.dataset.depth`），
+  CSS 用 `[data-depth]` 选择器微调（`○` 缩小 font-size、`▪` translateY 居中）；alcove 固定宽度
+  （0.9em）不动，缩进/包裹不回归。
+
+## patch 文件维护硬规则（踩坑记录）
+
+- **hunk 必须按行号升序**：patch-package 按 hunk 顺序 apply，行号倒序（新 hunk 插在文件头）
+  会导致 apply 失败；追加低行号 hunk 时插到 diff --git 之后、对应行号位置。
+- **hunk 行数必须精确**：`@@ -a,b +c,d @@` 的 b/d 是 body 行数（含 context/deletion/insertion），
+  漏算会导致 `hunk header integrity check failed`。
+- **行尾统一 LF + 文件末尾留换行**：Windows 下 edit 工具写 CRLF、PowerShell Add-Content 混行尾，
+  patch-package 解析器把 CRLF 空行当 context（`"\r"` 是 context 类型）→ 校验失败。
+- **验证命令**：`git apply --reverse --check patches/xxx.patch`（node_modules 已应用补丁时
+  reverse 完全匹配 = patch 与磁盘一致）；`npx patch-package` 确认可应用。
+- 改 node_modules 后需删 `node_modules/.vite` 重启 dev server（见上 dev 缓存坑）。
+
 ## 体积
 
 - dist 解压 1.68 MB（JS 1.02MB + CSS 146KB + KaTeX 字体 ~260KB），≤ 5MB（AC13）

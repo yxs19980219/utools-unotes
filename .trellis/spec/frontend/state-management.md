@@ -91,3 +91,16 @@ async function save() {
 - **AC10 校验只做 UI 层**：必须 store 层 + db 层双保险（见 error-handling.md）
 - **把 sort/sourceFilter 放组件本地**：排序偏好是跨视图保留的全局状态（`ui.ts` 注释：切视图不清空，smoke-stores `[9]` 有断言），放本地会导致切换视图丢失偏好
 - **bootstrap 重复并发**：`bootstrapStores()` 未做 in-flight 去重时 React StrictMode 下会双拉；现在 `inflight` 共享（`src/stores/bootstrap.ts:13-30`，hydrate 注入在 22-24）
+
+## 主题偏好（明暗三态，08-15 任务）
+
+- 模型：`Prefs.theme?: 'light' | 'dark' | 'system'`（可选字段，缺省等价 system，老数据零迁移）；
+  存 `setting/prefs`（与 defaultSort 同文档，savePrefs 必须展开 `{ ...prefs, theme }`，勿只传单字段）。
+- 应用：`src/lib/theme.ts` 的 `setThemePref(pref)` 是唯一入口——内部单例清理（切换时撤销旧
+  matchMedia 监听）；`system` 才挂监听，`light/dark` 直接设 class。
+- 时序：main.tsx 首帧 `setThemePref('system')` 防闪白；`bootstrapStores()` 加载 prefs 后
+  `setThemePref(prefs.theme ?? 'system')`；设置页 Select 变更 → savePrefs + setThemePref。
+- **Node 环境守卫**：`applyThemePref` 必须判 `typeof window === 'undefined'`（smoke-stores 在
+  Node 跑 bootstrap 会调 setThemePref，无 window 直接 no-op）。
+- 冒烟约束：smoke-editor AC10 用 `page.emulateMedia({colorScheme})` 验证跟随系统——主题默认
+  system 才能与既有断言兼容，改默认值会破坏测试。
