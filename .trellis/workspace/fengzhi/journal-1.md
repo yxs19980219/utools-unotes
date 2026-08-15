@@ -195,3 +195,25 @@ dist 解压 1.68 MB（≤5MB）
   恢复 package.json ^6.5.2。**经验：真实环境（uTools webview + IME + 真实键盘）与 headless
   合成键盘存在无法复现的差异，多轮「修复→验证→用户仍失败」循环时应尽早与用户确认回退或
   接受默认行为，避免过度工程。**
+
+
+## Session 4: 编辑器交互与样式修复（高亮/下划线/标题/公式块/工具栏联动）发版 1.6.3
+
+**Date**: 2026-08-15
+**Task**: 编辑器交互与样式修复（高亮/下划线/标题/公式块/工具栏联动）发版 1.6.3
+**Branch**: `main`
+
+### Summary
+
+修复 5 项编辑器问题：==高亮== 黄色渲染（含 uTools 108 内核 rgba 兼容）、下划线标签光标 reveal、标题字号与分割线间距、公式块相邻点击归属修复与间距统一、工具栏格式联动高亮。引用 Enter 退出经多轮排查（keymap 优先级/IME 229/patch）后用户决定回退，接受 atomic 默认行为。发版 v1.6.3（tag + GitHub Release + SourceNote zip）。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bfa503f` | (see git log) |
+| `637d2a9` | (see git log) |
+
+### Status
+
+[OK] **Completed**
