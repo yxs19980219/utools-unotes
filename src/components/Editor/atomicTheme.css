@@ -124,20 +124,31 @@
   transform-origin: center;
 }
 
-/* ---- 列表符号层级微调：二级 ○ 缩小至与一级 ● 视觉接近；三级 ■ 垂直居中
-   （depth 由 patch 的 BulletWidget data-depth 提供） ---- */
+/* ---- 列表符号层级微调：二级 ○ 视觉缩小至与一级 ● 接近；三级 ■ 垂直居中。
+   用 transform: scale 而非 font-size（font-size 会改变 em 基准 → marker 的
+   min-width: 0.9em 随字号漂移 → 缩进错位；scale 不影响布局）。0.91 ≈ 0.7em 缩小比 ---- */
 .cm-atomic-bullet[data-depth='1'] {
-  font-size: 0.7em;
+  transform: scale(0.91);
 }
 .cm-atomic-bullet[data-depth='2'] {
   transform: scale(1.3) translateY(0.08em);
 }
 
-/* ---- 待办完成态：整行灰底 + 文字灰色（保留删除线），未完成行不变 ---- */
+/* ---- marker 固定宽度（08-15 实测修复）：inline-block min-content 规则使原始
+   width: 0.9em 失效（各级 marker 宽度=字符宽，○ 缩小后文字起点缩进漂移：
+   1→2 级 14.3px、2→3 级 26.5px）。min-width 强制 alcove 统一 → 缩进每级一致 ---- */
+.cm-atomic-list-marker {
+  min-width: 0.9em;
+}
+
+/* ---- 待办完成态：框体变灰 + 文字灰色（保留删除线），未完成行不变。
+   用户澄清：不要整行背景，只要框本身与文字变灰 ---- */
+.cm-atomic-task-checkbox:checked {
+  background: var(--muted-foreground);
+  border-color: var(--muted-foreground);
+}
 .cm-line.cm-atomic-task-done {
-  background: var(--muted);
   color: var(--muted-foreground);
-  border-radius: 0.3em;
   text-decoration: line-through;
 }
 
