@@ -6,6 +6,7 @@
  * （uTools 重新进入插件 / HMR 场景可刷新外部同步的数据）。
  */
 import { getDb, isNoteDoc, isObjectDoc, isTagDoc } from '../services/db.ts'
+import { setThemePref } from '../lib/theme.ts'
 import { useNotesStore } from './notes.ts'
 import { useObjectsStore } from './objects.ts'
 import { useSettingsStore } from './settings.ts'
@@ -28,6 +29,8 @@ export function bootstrapStores(): Promise<void> {
         await useSettingsStore.getState().load()
         // 偏好合并：启动时默认排序应用（relevance 仅搜索态，不覆盖）
         useUiStore.getState().applyPrefs(useSettingsStore.getState().prefs)
+        // 主题按持久化偏好应用（缺省跟随系统）
+        setThemePref(useSettingsStore.getState().prefs.theme ?? 'system')
       } finally {
         inflight = null
       }

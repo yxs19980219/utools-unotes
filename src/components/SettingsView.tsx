@@ -38,9 +38,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { setThemePref } from '@/lib/theme'
 import { useSettingsStore } from '@/stores/settings'
 import { useUiStore } from '@/stores/ui'
-import type { SourceType } from '@/types'
+import type { SourceType, ThemePref } from '@/types'
 
 function SectionLabel({ children }: { children: string }) {
   return (
@@ -184,9 +185,16 @@ function PrefsBlock() {
 
   const setDefaultSort = async (v: string) => {
     const defaultSort = v as 'updated' | 'created' | 'title'
-    await savePrefs({ defaultSort })
+    await savePrefs({ ...prefs, defaultSort })
     applyPrefs({ defaultSort })
     toast.success('偏好已保存')
+  }
+
+  const setTheme = async (v: string) => {
+    const theme = v as ThemePref
+    await savePrefs({ ...prefs, theme })
+    setThemePref(theme)
+    toast.success('主题已保存')
   }
 
   return (
@@ -206,6 +214,25 @@ function PrefsBlock() {
             <SelectItem value="updated">最近更新</SelectItem>
             <SelectItem value="created">创建时间</SelectItem>
             <SelectItem value="title">标题</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-sm">主题</span>
+          <span className="text-xs text-muted-foreground">
+            亮色 / 暗色 / 跟随系统（重启后仍生效）
+          </span>
+        </div>
+        <Select value={prefs.theme ?? 'system'} onValueChange={(v) => void setTheme(v)}>
+          <SelectTrigger size="sm" aria-label="主题" className="w-32 shrink-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="system">跟随系统</SelectItem>
+            <SelectItem value="light">亮色</SelectItem>
+            <SelectItem value="dark">暗色</SelectItem>
           </SelectContent>
         </Select>
       </div>

@@ -92,10 +92,15 @@ export const SETTING_KEYS = {
   prefs: 'prefs',
 } as const
 
+/** 主题偏好（缺省/非法值等价跟随系统，老数据无需迁移） */
+export type ThemePref = 'light' | 'dark' | 'system'
+
 /** 偏好设置（R9：MVP 仅默认排序；relevance 仅搜索态，不进偏好） */
 export interface Prefs {
   /** 内容区列表默认排序 */
   defaultSort: 'updated' | 'created' | 'title'
+  /** 明暗主题偏好；缺省等价「跟随系统」 */
+  theme?: ThemePref
 }
 
 /** 内置来源类型默认枚举（R4） */

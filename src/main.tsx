@@ -2,19 +2,15 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
+import { setThemePref } from './lib/theme.ts'
 import { useNotesStore } from './stores/notes.ts'
 import { useUiStore } from './stores/ui.ts'
 
 /**
- * 暗色模式：uTools 主题跟随系统，优先用 web 原生 prefers-color-scheme
- * （utools-dev skill 推荐），切换 html 的 .dark 类驱动 shadcn token 体系。
+ * 明暗主题：首帧按系统（防闪白）；App bootstrap 加载 prefs 后按持久化偏好切换
+ * （设置页可改为固定明/暗/跟随系统，见 lib/theme.ts）。
  */
-function applyTheme() {
-  const dark = window.matchMedia('(prefers-color-scheme: dark)').matches
-  document.documentElement.classList.toggle('dark', dark)
-}
-applyTheme()
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme)
+setThemePref('system')
 
 // 测试 hook（仅无 uTools 环境暴露）：ui-smoke/smoke-editor 用 window.__snDebug
 // 触发搜索态 / 读取已落盘正文（round-trip 字节级断言）。uTools 内不注入。

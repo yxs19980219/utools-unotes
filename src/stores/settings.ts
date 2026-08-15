@@ -22,7 +22,7 @@ import type { Prefs, SourceType } from '../types.ts'
 import { BUILTIN_SOURCE_TYPES } from '../types.ts'
 
 /** 偏好默认值（无 setting/prefs 文档时） */
-export const DEFAULT_PREFS: Prefs = { defaultSort: 'updated' }
+export const DEFAULT_PREFS: Prefs = { defaultSort: 'updated', theme: 'system' }
 
 /** 来源类型 id 生成：slugify(label) 唯一化（撞 id 时追加 -n 后缀） */
 function nextTypeId(label: string, existing: SourceType[]): string {
@@ -67,12 +67,15 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
       getSourceTypes(),
       getSetting('prefs'),
     ])
-    const raw = prefsSetting?.value as { defaultSort?: unknown } | undefined
-    const defaultSort = raw?.defaultSort
-    const prefs: Prefs =
-      defaultSort === 'updated' || defaultSort === 'created' || defaultSort === 'title'
-        ? { defaultSort }
-        : { ...DEFAULT_PREFS }
+    const raw = prefsSetting?.value as { defaultSort?: unknown; theme?: unknown } | undefined
+    // 逐字段校验：非法值回落默认（老数据无 theme → undefined → 等价跟随系统）
+    const prefs: Prefs = { ...DEFAULT_PREFS }
+    if (raw?.defaultSort === 'updated' || raw?.defaultSort === 'created' || raw?.defaultSort === 'title') {
+      prefs.defaultSort = raw.defaultSort
+    }
+    if (raw?.theme === 'light' || raw?.theme === 'dark' || raw?.theme === 'system') {
+      prefs.theme = raw.theme
+    }
     set({ sourceTypes: types, prefs, loaded: true })
   },
 
