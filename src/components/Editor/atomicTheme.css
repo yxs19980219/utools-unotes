@@ -20,7 +20,10 @@
   --atomic-editor-bg-panel: var(--card);
   --atomic-editor-bg-surface: var(--muted);
   --atomic-editor-border: var(--border);
-  /* 中性强调（项目黑白灰体系，强调 = 前景色；引用轨道/揭示 tint 用 muted） */
+  /* 中性强调（项目黑白灰体系，强调 = 前景色；引用轨道/揭示 tint 用 muted）。
+     注意：accent-bright 同时被 atomic 的光标色（.cm-cursor / caretColor）使用，
+     不能改成彩色（曾误改 → 光标变黄）；高亮底色由下方 .cm-atomic-highlight 直接引用
+     --editor-highlight，与 accent-bright 解耦。 */
   --atomic-editor-accent: var(--foreground);
   --atomic-editor-accent-bright: var(--foreground);
   --atomic-editor-accent-soft: var(--muted);
@@ -33,7 +36,8 @@
   --atomic-editor-search-bg-active: var(--editor-accent-45);
 }
 
-/* ---- 自研公式装饰 ---- */
+/* ---- 自研公式装饰（R5：间距由块 padding 统一，KaTeX 自带 margin 归零——块与上/下
+   内容、块与块的间距一致，不再随源码行数变化） ---- */
 .cm-math-inline {
   display: inline;
 }
@@ -41,7 +45,11 @@
 .cm-math-block {
   display: block;
   text-align: center;
-  padding: 0.1em 0;
+  padding: 0.35em 0;
+}
+
+.cm-math-block .katex-display {
+  margin: 0;
 }
 
 .cm-math-error {
@@ -52,6 +60,21 @@
 .cm-underline {
   text-decoration: underline;
   text-underline-offset: 0.15em;
+}
+
+/* ---- ==高亮== 渲染色（覆盖 atomic 默认 20% 前景混合：近黑/近白不可见 → 黄色）。
+   兼容 uTools 内核 Chromium 108（不支持 color-mix）：
+   第一条 rgba 兜底（浅色；108 中 var 行展开 color-mix 非法 → 该声明被丢弃 → 回退本条）；
+   第二条 var（108 深色展开为 rgba 有效覆盖；111+ 展开 color-mix） ---- */
+.cm-atomic-highlight {
+  background: rgba(253, 224, 71, 0.45);
+  background: var(--editor-highlight-45, rgba(253, 224, 71, 0.45));
+}
+
+/* 深色主题：108 内核 .dark 的 --editor-highlight-45 同样被 color-mix 后声明覆盖（非法
+   被丢弃 → 回退浅黄），需显式深黄兜底；111+ 该 rgba 值亦与 color-mix 结果一致 */
+.dark .cm-atomic-highlight {
+  background: rgba(202, 138, 4, 0.45);
 }
 
 /* ---- R1 编辑区宽度：覆盖 inline-preview.css 的 70ch 居中，占满可用宽度 ---- */
@@ -68,18 +91,33 @@
   transform-origin: center;
 }
 
-/* ---- 公式块间距（R3）：覆盖 KaTeX displayMode 默认 margin:1em 0 ---- */
-.cm-math-block .katex-display {
-  margin: 0.15em 0;
+/* ---- 标题字号增大 + 上下间距扩大 + 底部细线（R5 迭代：字号再增、分割线与正文留白） ---- */
+.cm-line.cm-atomic-h1 {
+  font-size: 1.7em;
+  line-height: 1.28;
+  padding-top: 0.28em;
+  padding-bottom: 0.55em;
 }
-
-/* ---- 标题字号增大 + 底部细线（R5） ---- */
-.cm-line.cm-atomic-h1 { font-size: 1.45em; }
-.cm-line.cm-atomic-h2 { font-size: 1.3em; }
-.cm-line.cm-atomic-h3 { font-size: 1.18em; }
-.cm-line.cm-atomic-h4 { font-size: 1.06em; }
-.cm-line.cm-atomic-h5 { font-size: 1em; }
-.cm-line.cm-atomic-h6 { font-size: 0.95em; }
+.cm-line.cm-atomic-h2 {
+  font-size: 1.45em;
+  line-height: 1.32;
+  padding-top: 0.26em;
+  padding-bottom: 0.5em;
+}
+.cm-line.cm-atomic-h3 {
+  font-size: 1.25em;
+  line-height: 1.36;
+  padding-top: 0.24em;
+  padding-bottom: 0.46em;
+}
+.cm-line.cm-atomic-h4 {
+  font-size: 1.1em;
+  line-height: 1.4;
+  padding-top: 0.2em;
+  padding-bottom: 0.42em;
+}
+.cm-line.cm-atomic-h5 { font-size: 1.02em; line-height: 1.42; padding-top: 0.16em; padding-bottom: 0.4em; }
+.cm-line.cm-atomic-h6 { font-size: 0.95em; line-height: 1.42; padding-top: 0.16em; padding-bottom: 0.4em; }
 
 .cm-line.cm-atomic-h1,
 .cm-line.cm-atomic-h2,
@@ -100,7 +138,13 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
   border-bottom: 1px solid var(--border);
   pointer-events: none;
 }
+/* 分割线位于 padding-bottom 区域内偏下：与标题文字、与下一行内容各留约 0.2em */
+.cm-line.cm-atomic-h1::after { bottom: 0.35em; }
+.cm-line.cm-atomic-h2::after { bottom: 0.3em; }
+.cm-line.cm-atomic-h3::after { bottom: 0.26em; }
+.cm-line.cm-atomic-h4::after { bottom: 0.22em; }
+.cm-line.cm-atomic-h5::after,
+.cm-line.cm-atomic-h6::after { bottom: 0.2em; }

@@ -36,6 +36,7 @@ interface AtomicEditorProps {
   value: string            // 初始 doc（仅挂载时读取，编辑器之后为真相源）
   onChange(value: string)  // updateListener docChanged → 回写
   onSave?: () => void      // Ctrl/Cmd+S（Mod-s keymap）
+  onActiveFormat?(fmt: ActiveFormatState): void  // selection/doc 变化上报光标格式（工具栏联动；缺省不上报）
   placeholder?: string     // @codemirror/view placeholder 扩展
   autoFocus?: boolean
   readonly?: boolean       // readOnlyExtension（Compartment reconfigure）
@@ -43,6 +44,14 @@ interface AtomicEditorProps {
   documentId: string       // 文档身份：变化时重挂载（双保险）
 }
 ```
+
+- **ActiveFormatState**（R6 工具栏联动）：`heading: 0|1..6` + bold/italic/underline/
+  strike/highlight/inlineCode/link/quote/ul/ol/task 布尔。由 `computeActiveFormat`
+  计算：语法树（resolveInner 沿父链收集 ATXHeading/StrongEmphasis/Emphasis/
+  Strikethrough/InlineCode/Link/Highlight/Blockquote/ListItem）+ 正则（`<u>` 区间
+  复用 UNDERLINE_RE）；长文档光标行未解析时尽力而为。回调经 ref 同步（不重建
+  updateListener）。MarkdownToolbar 消费：匹配的按钮 `text-destructive` + `bg-accent`
+  红色高亮。
 
 - **受控语义（关键）**：原子编辑器非受控，切笔记靠 **`ContentArea` 给 `NoteView` 加
   `key={activeNoteId}`** 强制重挂载——draft 初始值即新笔记 content，编辑器读正确初始值。
@@ -83,7 +92,14 @@ File: `src/components/Editor/extensions/mathExtension.ts`
 - 语法边界：行内 `$` 非转义 + 开后非空白 + 闭前非空白 + 内容不含 `$`/换行；
   块级整行 `$$content$$`（单行）/ `$$` 起止行（多行）；先块后行内互不重叠
 - 光标行揭示：selection 覆盖的行显示源码（块被覆盖任一行 → 整块源码）；只读恒渲染
-- 点击渲染结果 → selection 移入公式源码（revealPos）
+- 点击渲染结果 → selection 移入公式源码（revealPos）；**点击归属校验（R5）**：handler 用
+  `view.posAtCoords({x,y})` 反查点击位置的文档归属，不在本块源码区间则不拦截（交 CM6
+  默认定位）——KaTeX 内容可能高于 CM6 分配的块高（如 `\sum`/`\frac` 渲染 ~2.5 行），
+  DOM 溢出区域仍属于本 widget，不校验会错误 reveal 上方块（相邻块点击错位）
+- **块高不由源码行数决定（R5）**：不再按 `lineCount` 设 minHeight——CM6 会测量 block
+  widget 实际 DOM 高度（`HeightMapBlock.setMeasuredHeight`）并更新 heightmap，
+  多行块渲染 1 行高时点击/方向键/Enter/滚动均正常（早期「必须 minHeight 对齐 N 行」
+  结论过时）；间距统一由 `.cm-math-block` padding 承担
 - KaTeX `renderToString` + 内容缓存；错误显示 `.cm-math-error`
 - **block widget 不替换行尾换行**：`Decoration.replace` 范围 = [from, to)（不含换行）——
   实测 replace 含换行 → Enter 后 selection 丢失（`getSelection()` 空），后续输入窜到文档开头
@@ -92,13 +108,16 @@ File: `src/components/Editor/extensions/mathExtension.ts`
 
 File: `src/components/Editor/extensions/underlineDecoration.ts`
 
-- ViewPlugin + 正则 `<u>([^<]*?)</u>`：`<u>`/`</u>` 标签 `Decoration.replace({})` 恒隐藏，
+- ViewPlugin + 正则 `<u>([^<]*?)</u>`：`<u>`/`</u>` 标签 `Decoration.replace({})` 隐藏，
   内容 `Decoration.mark({ class: 'cm-underline' })`（CSS text-decoration: underline）
-- **恒隐藏（R6）**：光标行也隐藏标签（对齐引用 `>` 恒隐藏契约，完全所见即所得），
-  无「光标行揭示源码」分支——早期版本光标行整行 skip 导致标签可见 + 文字无下划线，
-  与粗体 `**`「标记可见但内容仍加粗」不一致，用户反馈后改为恒隐藏
+- **标签按光标 reveal（R3）**：光标/选区触及该 `<u>…</u>` 区间（含标签字符本身）时
+  标签显示为源码（可编辑）；移出恢复隐藏；只读模式恒隐藏。早期「恒隐藏」让用户
+  无法看到光标所在标签、无法定位删除
 - 删除下划线靠 `toggleInline('<u>','</u>')`（工具栏/快捷键），不手动删标签
 - `UNDERLINE_RE` 从本文件导出，供 `markdownInsertApi.ts` 的 toggle 复用（避免重复定义）
+- **RangeSetBuilder 必须按 from 递增 add**：标签/内容/闭合标签三段装饰需按文档序
+  add；条件跳过（active 时不 add 标签段）不影响单调性——曾因 7,10 先于 3,7 add
+  导致构建异常、整个装饰静默失效（页面无报错，下划线样式消失）
 
 ## 主题（atomicTheme.css）
 
@@ -108,15 +127,29 @@ File: `src/components/Editor/extensions/underlineDecoration.ts`
 - 自研装饰样式（`.cm-math-inline`/`.cm-math-block`/`.cm-math-error`/`.cm-underline`）同文件定义
 - KaTeX 字体经 vite `katexWoff2Only` 裁剪（仅 woff2）；构建目标 chrome 88（lightningcss 降级）
 - **编辑区宽度**（R1）：覆盖 atomic 的 70ch 居中——`.atomic-cm-editor .cm-content { max-width: none; margin-inline: 0; padding-inline: 0.75rem }`（占满可用宽度）
-- **公式高度**（R6）：`.cm-math-block` padding `0.1em 0`（原 0.4em）
+- **公式高度与间距**（R5）：`.cm-math-block` padding `0.35em 0`；`.katex-display`
+  margin 归零——块与上/下内容、块与块的间距统一（由块 padding 承担），与源码
+  行数解耦（多行块渲染 1 行高）
+- **高亮底色**（==高亮==）：`--editor-highlight` token（index.css `:root` 浅色
+  `#fde047` / `.dark` 深色 `#ca8a04`），`.cm-atomic-highlight` 覆盖为 45% 混合
+  （atomic 默认 `--atomic-editor-accent-bright` 20% 混合在黑白主题下近不可见）。
+  **⚠️ 勿改 `--atomic-editor-accent-bright` 为彩色**：该变量同时被光标
+  （`.cm-cursor` / caretColor）使用，改色会导致光标变色；彩色样式直接引用独立 token。
+- **标题字号 + 细线**（R5 迭代）：`.cm-line.cm-atomic-h1..h6` font-size 覆盖
+  （1.7/1.45/1.25/1.1/1.02/0.95em）+ 上下 padding 扩大（h1 `0.28em/0.55em` 起）
+  + `::after` 绝对定位 `border-bottom: 1px solid var(--border)` 细线置于 padding 区
+  内（`bottom` 按级别 0.35em→0.2em，与标题文字、与下一行各留 ~0.2em）——
+  绝对定位不扰动 CM6 高度测量。
 - **链接蓝色**（R4）：`--atomic-editor-link: #3b82f6`、`--atomic-editor-link-hover: #2563eb`
   （原 `var(--foreground)` 黑/白）；链接图标 `::after` 的 `color-mix(link 82%)` 自动跟随。
 - **列表圆点加深加大**（R2）：`.cm-atomic-bullet { color: var(--foreground); transform: scale(1.3); transform-origin: center }`
   ——用 `transform: scale` 而非 `font-size`（后者因 em 相对自身会连带放大 `.cm-atomic-list-marker`
   的 0.9em alcove，破坏缩进对齐）。`•`（depth0）/`▪`（depth2）加深后圆/方可辨。
-- **公式块间距**（R3）：`.cm-math-block .katex-display { margin: 0.15em 0 }` 覆盖 KaTeX
+- **公式块间距**（R3→R5）：`.cm-math-block .katex-display { margin: 0 }` 覆盖 KaTeX
   displayMode 默认 `margin: 1em 0`（间距大 + 点击不可达的同源根因——margin 不在
-  `getBoundingClientRect` 内，CM6 block widget 高度测量与 DOM 错位）。
+  `getBoundingClientRect` 内，CM6 block widget 高度测量与 DOM 错位）。块间距由
+  `.cm-math-block` 自身 padding `0.35em 0` 统一承担（相邻块 padding 叠加 0.7em，
+  与文字↔块 0.35em 存在差异，视觉可接受）。
 - **标题字号 + 细线**（R5）：`.cm-line.cm-atomic-h1..h6` font-size 覆盖（1.45/1.3/1.18/1.06/1/0.95em，
   较 atomic 默认 +~8%）+ `::after` 绝对定位 `border-bottom: 1px solid var(--border)` 底部细线
   （复用 `.cm-atomic-hr::after` 先例，绝对定位不扰动 CM6 高度测量）。
@@ -137,18 +170,35 @@ File: `src/components/Editor/extensions/underlineDecoration.ts`
 
 ## 自研 Enter/快捷键 keymap（AtomicEditor.tsx）
 
-- **引用 Enter 退出（R1）**：自研 `exitBlockquoteOnEnter`（`Prec.high` Enter keymap）——纯空引用行
-  行尾 Enter 删除 `>` 退出引用。lang-markdown 的 `insertNewlineContinueMarkup` 需「连续两行空引用」
-  才退出（实际 Enter 三次），本项目改为 Obsidian 标准（非空引用行 Enter 续 `> `、空引用行 Enter 退出）。
-  返回 false 时 fallthrough 到 markdownKeymap，列表续行不受影响。
-- **快捷键（R7）**：`Mod-b`/`Mod-i`/`Mod-u`（`Prec.high`，`return true` 阻断浏览器默认）调
-  `api.toggleInline(...)`；`api` useMemo 提前到 useEffect 之前（keymap 装配时引用，view 惰性获取）。
-- 现有 `Mod-s` 保存（`Prec.high`）保持不变。
+- **引用 Enter/Backspace 退出（R1）**：自研 `exitBlockquoteOnEnter` / `exitBlockquoteOnBackspace`
+  （**`Prec.highest`** keymap）——纯空引用行（行文本恰为 `>` / `> `）Enter 或 Backspace
+  删除标记退出引用。lang-markdown 的 `insertNewlineContinueMarkup` 需「连续两行空引用」
+  才退出（实际 Enter 三次），本项目改为 Obsidian 标准（非空引用行 Enter 续 `> `、空引用行
+  Enter/Backspace 退出）。返回 false 时 fallthrough 到 markdownKeymap，列表续行不受影响。
+- **⚠️ 必须 `Prec.highest` 而非 `Prec.high`**：lang-markdown 的 markdownKeymap 也是
+  `Prec.high(keymap.of(...))` 且配置位置更早——同优先级按配置顺序，insertNewlineContinueMarkup
+  会先消费 Enter（空引用行也返回 true 续行），`Prec.high` 的兜底 handler 永远轮不到
+  （实测：仅 Mod 快捷键生效、Enter 静默失效，无任何报错）。
+- **光标判定用「光标在 `>` 标记之后」**而非「恰为行尾」：insertNewlineContinueMarkup 续行后
+  光标停在 `>` 与尾随空格之间（`>| `），行尾判定会漏。
+- **事务层兜底（`exitBlockquoteOnEnterTxn`，Prec.highest transactionFilter）**：keydown
+  可能被 IME（keyCode 229，输入法确认候选）吞掉，Enter 退化为默认换行（DOM change 插入
+  单字符 `\n`）——在事务层拦截「光标位于空引用行 + 单字符 `\n` 插入」→ 改写为「剥离
+  `> ` + 换行」。严格条件（selection 在插入点、单字符 \n、无其他 change、排除 undo/redo/
+  paste）保证不误伤；keymap 正常时事务不含裸 `\n`，互不干扰。
+- **快捷键（R7）**：`Mod-b`/`Mod-i`/`Mod-u`（同一 `Prec.highest` keymap，`return true` 阻断
+  浏览器默认）调 `api.toggleInline(...)`；`api` useMemo 提前到 useEffect 之前（keymap 装配时
+  引用，view 惰性获取）。`Mod-s` 保存同组。
+- 嵌套引用（`> > `）不匹配空引用行正则 → 不干预（保留 lang-markdown 行为）。
 
 **patch-package 机制**：
 - `@atomic-editor/editor` 锁定精确 `0.6.2`（去 `^`）；补丁在 `patches/@atomic-editor+editor+0.6.2.patch`。
+- `@codemirror/lang-markdown` 锁定精确 `6.5.2`；补丁在 `patches/@codemirror+lang-markdown+6.5.2.patch`——
+  **空引用行（`>` / `> `）Enter 直接退出引用**（在 insertNewlineContinueMarkup 的
+  「连续两个空引用行」分支前插入），与项目 keymap + transactionFilter 三层保险：
+  keymap（Prec.highest，src）→ 续行函数内部（patch）→ 默认换行事务（transactionFilter）。
 - `package.json` 有 `"postinstall": "patch-package"`，`npm i`/`npm ci` 后自动重放补丁（幂等）。
-- **升级 atomic 需重打补丁**：改 node_modules 后 `npx patch-package @atomic-editor/editor`；
+- **升级依赖需重打补丁**：改 node_modules 后 `npx patch-package <pkg>`；
   npm 12 下生成补丁时需 `$env:npm_config_allow_remote="all"`（EALLOWREMOTE，仅生成时，应用时无需）。
 - **dev 缓存坑**：改 node_modules 后若 dev server 早已启动，`node_modules/.vite` 依赖预构建
   缓存仍是旧代码——删 `.vite` 重启 dev server 才生效（生产构建 dist 不受影响）。

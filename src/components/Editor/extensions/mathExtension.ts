@@ -65,15 +65,17 @@ class MathWidget extends WidgetType {
   private readonly source: string
   private readonly isBlock: boolean
   private readonly revealPos: number
-  /** widget 覆盖的源行数（min-height 基准，保持 heightmap 与 DOM 一致） */
-  private readonly lineCount: number
+  /** widget 覆盖的源码区间（点击归属校验用） */
+  private readonly from: number
+  private readonly to: number
 
-  constructor(source: string, isBlock: boolean, revealPos: number, lineCount = 1) {
+  constructor(source: string, isBlock: boolean, revealPos: number, from: number, to: number) {
     super()
     this.source = source
     this.isBlock = isBlock
     this.revealPos = revealPos
-    this.lineCount = lineCount
+    this.from = from
+    this.to = to
   }
 
   eq(other: MathWidget): boolean {
@@ -84,16 +86,21 @@ class MathWidget extends WidgetType {
     const dom = document.createElement(this.isBlock ? 'div' : 'span')
     dom.className = this.isBlock ? 'cm-math-block' : 'cm-math-inline'
     dom.innerHTML = renderMath(this.source, this.isBlock)
-    // 多行块替换 N 行源码，widget 高度必须对齐 N 行（否则 heightmap 与 DOM 不一致，
-    // 块下方方向键/点击的 Y→文档位置映射全部错位——实测会吸到块起点）
-    if (this.isBlock && this.lineCount > 1) {
-      dom.style.minHeight = `calc(${this.lineCount} * var(--atomic-editor-body-leading, 1.7) * 1em)`
-    }
+    // 实验（R5 间距统一）：不再按源码行数设置 minHeight，widget 高度 = KaTeX 内容实际
+    // 高度；CM6 HeightMapBlock.setMeasuredHeight 会测量 block widget 实际 DOM 高度并更新
+    // heightmap，视觉间距与源码行数解耦。验证点击/方向键/滚动无回归后保留。
     // 点击渲染结果 → 光标移入公式源码（selection 变化即重建装饰揭示源码行）。
     // preventDefault 使 CM6 的 mousedown 处理整体跳过，避免光标被放到被替换区间之外。
+    // 归属校验：KaTeX 内容可能高于 CM6 分配的块高（如 \sum/\frac 渲染 ~2.5 行），DOM
+    // 溢出区域仍属于本 widget——点击「上方块的溢出区」（视觉上是下方块/间隙）会错误
+    // reveal 上方块（"点击下面的跳回上面的"）。用 posAtCoords 反查点击位置的文档归属，
+    // 不在本块源码区间内则不拦截，交 CM6 默认定位（光标落到真正点击的块）。
     dom.addEventListener('mousedown', (e) => {
       const view = EditorView.findFromDOM(dom)
       if (!view || view.state.readOnly) return
+      const me = e as MouseEvent
+      const hit = view.posAtCoords({ x: me.clientX, y: me.clientY })
+      if (hit === null || hit < this.from || hit > this.to) return
       e.preventDefault()
       view.dispatch({
         selection: { anchor: this.revealPos },
@@ -312,7 +319,7 @@ function buildMathDecorations(state: EditorState): DecorationSet {
         r.from,
         r.to,
         Decoration.replace({
-          widget: new MathWidget(r.content, true, r.from + 2, rangeLines(doc, r.from, r.to).length),
+          widget: new MathWidget(r.content, true, r.from + 2, r.from, r.to),
           block: true,
         }),
       )
@@ -320,7 +327,7 @@ function buildMathDecorations(state: EditorState): DecorationSet {
       builder.add(
         r.from,
         r.to,
-        Decoration.replace({ widget: new MathWidget(r.content, false, r.from + 1) }),
+        Decoration.replace({ widget: new MathWidget(r.content, false, r.from + 1, r.from, r.to) }),
       )
     }
   }

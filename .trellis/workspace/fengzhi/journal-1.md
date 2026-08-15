@@ -130,3 +130,68 @@ dist 解压 1.68 MB（≤5MB）
 ### Status
 
 [OK] **Completed**
+
+## Session 4: 编辑器交互与样式修复（6 项）
+
+**Date**: 2026-08-15
+**Task**: 编辑器交互与样式修复（引用删除、高亮、下划线标签、标题间距、公式块、功能区联动）
+**Branch**: `main`
+
+### Summary
+
+修复 6 项编辑器问题：1) 空引用行 Backspace 一次退出（自定义 handler 兜底 deleteMarkupBackward 的语法树依赖）2) ==高亮== 背景由近黑 20% 改黄色 token（--editor-highlight，浅 #fde047 / 深 #ca8a04）3) <u> 标签按光标 reveal（光标在区间内显示标签）4) 标题字号增大（h1 1.7em）+ 分割线移至 padding 区内（与上下文各留 ~0.2em）5) 公式块点击归属校验（posAtCoords 反查，修复相邻块点击错位）+ 移除 minHeight 依赖 CM6 块高度测量（间距与源码行数解耦）6) 工具栏联动（onActiveFormat 上报光标格式，13 项按钮红色高亮）。
+
+### 踩坑（调试发现）
+
+- **RangeSetBuilder 必须按 from 递增 add**：条件分支导致 7,10 在 3,7 之前 add → 构建异常、整个装饰静默失效（页面无报错，`<u>` 无下划线样式）
+- **CM6 block widget 高度会被测量**（HeightMapBlock.setMeasuredHeight）：移除 minHeight 后多行块渲染 1 行高，点击/方向键/Enter/滚动均正常——原「必须 minHeight 对齐 N 行」结论过时
+- **block widget DOM 溢出**（KaTeX 内容 > 1 行）：溢出区点击命中上方块 DOM → 用 view.posAtCoords 反查点击归属，不在本块区间则不拦截
+- **Fast Refresh 陷阱**：EditorView 实例在 useEffect 中创建，改扩展模块后 HMR 不重建实例（旧 keymap/装饰仍生效），验证需刷新页面或新建页面
+- **playwright 断言防抖竞态**：store 读的是防抖落盘值，操作后需 waitForFunction 等 store 变化再断言；evaluate 内 console.log 不输出到 Node stdout
+
+**验证**：smoke:editor 32/32、ui-smoke 50/50、数据层 smoke 全过、typecheck 绿
+
+### Status
+
+[OK] **Completed**（待提交）
+- **Prec.high 不是独占的**：lang-markdown 的 markdownKeymap 也是 `Prec.high(keymap.of(...))`
+  （markdown() 内部第 424 行）且配置位置更早——同优先级按配置顺序，insertNewlineContinueMarkup
+  会先消费 Enter（空引用行也返回 true 续行），自定义 Enter/Backspace handler 永远轮不到。
+  必须用 **Prec.highest** 才能先于 markdown 的 keymap 执行。
+- **insertNewlineContinueMarkup 续行后光标在 `>` 与尾随空格之间**（`>| ` 非行尾）——
+  引用退出判定用「光标在 `>` 标记之后」而非「恰为行尾」。
+- **`--atomic-editor-accent-bright` 被光标（.cm-cursor/caretColor）使用**：改成彩色会让
+  光标变色——高亮底色等彩色样式必须直接引用独立 token，不复用该变量。
+- **uTools 内核 Chromium 108 不支持 color-mix()**（Chrome 111+ 才支持）：高亮背景等
+  彩色样式在 108 里整条声明失效 → 「背景没渲染、文字还是黑色」。修复模式：
+  `.cm-atomic-highlight { background: rgba(...); background: var(--editor-highlight-45); }`
+  ——普通属性双写时，旧内核中 var 展开 color-mix 非法 → 该声明被丢弃 → 回退 rgba 行
+  （自定义属性 --* 不校验值，双写变量无效——后声明胜，项目 --editor-muted-* 同模式）。
+  深色 108 需 `.dark .cm-atomic-highlight` 显式 rgba 兜底（.dark 内变量同样被 color-mix
+  后声明覆盖）。
+- **IME（keyCode 229）会吞掉 Enter 的 keydown**：中文输入法确认候选时 Enter 的
+  keyCode=229，CM6 的 ignoreDuringComposition 忽略 keymap → 退化为浏览器默认换行 →
+  空引用行 Enter 退出失效（Backspace 无 IME 竞争所以正常）。headless/Playwright
+  合成键盘无法复现（真实键盘才有）——排查此类问题先做 Backspace/Enter 二分。
+- **最终防线（transactionFilter）**：在事务层拦截「光标位于空引用行 + 单字符 `\n`
+  插入」→ 改写为「剥离 `> ` + 换行」——覆盖 keymap 之外的默认换行路径（Enter 229 /
+  真实键盘 DOM change）。严格条件（selection 在插入点、单字符 \n、无其他 change）
+  保证不误伤普通换行/粘贴/多行输入。keymap 正常时事务不含裸 \n，互不干扰。
+- **最终修复：patch @codemirror/lang-markdown 的 insertNewlineContinueMarkup**（patches/
+  @codemirror+lang-markdown+6.5.2.patch，版本锁定精确 6.5.2）：在「连续两个空引用行
+  才退出」分支前插入「单空引用行（`>` / `> `）Enter 直接退出」——与项目自身 keymap
+  （Prec.highest）+ transactionFilter 组成三层保险（keymap → 续行函数内部 → 默认换行
+  事务），任何路径下空引用行 Enter 都退出引用。
+- **⚠️ vite 依赖预构建缓存**：改 node_modules 包（patch-package 应用后）dev server 不会
+  自动重新预构建——必须重启 dev server（或 --force），否则加载旧模块（症状：src 改动
+  生效、依赖改动不生效；页面刷新无效）。uTools dev 模式排障先重启 dev server。
+- **patch-package 手动生成 patch**：npm 网络失败时 `npx patch-package` 无法自动生成——
+  手动写 git diff 格式 patch，注意 hunk 行数必须与实际内容精确匹配（`@@ -250,9 +250,18 @@`），
+  写完用 `npx patch-package`（重放所有 patches/）验证可应用。
+- **R1 引用退出回退（用户决定）**：三层保险（keymap Prec.highest + lang-markdown patch +
+  transactionFilter）在用户 uTools 真实环境仍无效，用户接受 atomic 默认行为（空一行退出），
+  决定回退引用 Enter 退出相关全部修改：恢复任务前 exitBlockquoteOnEnter（Prec.high 原版，
+  本就不生效）+ 删除 Backspace handler/transactionFilter + 删除 lang-markdown patch +
+  恢复 package.json ^6.5.2。**经验：真实环境（uTools webview + IME + 真实键盘）与 headless
+  合成键盘存在无法复现的差异，多轮「修复→验证→用户仍失败」循环时应尽早与用户确认回退或
+  接受默认行为，避免过度工程。**

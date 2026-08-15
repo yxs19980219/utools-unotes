@@ -100,6 +100,12 @@
   --editor-muted-55: color-mix(in oklab, var(--muted) 55%, transparent);
   --editor-muted-60: color-mix(in oklab, var(--muted) 60%, transparent);
   --editor-accent-45: color-mix(in oklab, var(--accent) 45%, transparent);
+  /* 编辑器高亮底色（==高亮==；浅色 yellow-300）。
+     Chromium 108（uTools 内核）不支持 color-mix → rgba 双写（rgba 行生效于老内核，
+     color-mix 行覆盖于 111+，与 --editor-muted-* 同模式）。 */
+  --editor-highlight: #fde047;
+  --editor-highlight-45: rgba(253, 224, 71, 0.45);
+  --editor-highlight-45: color-mix(in srgb, var(--editor-highlight) 45%, transparent 55%);
 }
 
 .dark {
@@ -197,6 +203,10 @@
   --editor-muted-55: color-mix(in oklab, var(--muted) 55%, transparent);
   --editor-muted-60: color-mix(in oklab, var(--muted) 60%, transparent);
   --editor-accent-45: color-mix(in oklab, var(--accent) 45%, transparent);
+  /* 编辑器高亮底色（==高亮==；深色 yellow-600；rgba 双写兼容 Chromium 108） */
+  --editor-highlight: #ca8a04;
+  --editor-highlight-45: rgba(202, 138, 4, 0.45);
+  --editor-highlight-45: color-mix(in srgb, var(--editor-highlight) 45%, transparent 55%);
 }
 
 @theme inline {

@@ -16,7 +16,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeftIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
-import AtomicEditor, { type MarkdownInsertApi } from '@/components/Editor/AtomicEditor'
+import AtomicEditor, {
+  EMPTY_ACTIVE_FORMAT,
+  type ActiveFormatState,
+  type MarkdownInsertApi,
+} from '@/components/Editor/AtomicEditor'
 import MarkdownToolbar from '@/components/Editor/MarkdownToolbar'
 import TagChip from '@/components/TagChip'
 import { Badge } from '@/components/ui/badge'
@@ -114,6 +118,8 @@ export default function NoteView({ noteId }: { noteId: string }) {
 
   // 编辑器插入 API（state 驱动：ref 变化不触发渲染，工具栏需要实时拿到实例）
   const [editorApi, setEditorApi] = useState<MarkdownInsertApi | null>(null)
+  /** 光标处格式（工具栏联动高亮；selection 变化由编辑器上报） */
+  const [activeFormat, setActiveFormat] = useState<ActiveFormatState>(EMPTY_ACTIVE_FORMAT)
 
   /** 大纲跳转：编辑器定位到对应标题（滚动 + 光标） */
   const handleJump = useCallback(
@@ -167,7 +173,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
         <>
           {/* Markdown 快捷操作栏 + ⓘ 元信息（需求 1/6）：同一细线包裹行，ⓘ 在最右 */}
           <div className="flex shrink-0 items-center border-y border-border bg-background/60">
-            <MarkdownToolbar api={editorApi ?? EMPTY_API} />
+            <MarkdownToolbar api={editorApi ?? EMPTY_API} activeFormat={activeFormat} />
             <MetaInfoPanel note={note} onJump={handleJump} className="ml-auto" />
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
@@ -177,6 +183,7 @@ export default function NoteView({ noteId }: { noteId: string }) {
               value={draft}
               onChange={handleChange}
               onSave={handleSave}
+              onActiveFormat={setActiveFormat}
               autoFocus
               placeholder={'记录要点：# 标题、**加粗**、- 列表、``` 代码块 …'}
             />
