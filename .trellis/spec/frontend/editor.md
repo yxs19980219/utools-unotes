@@ -240,9 +240,11 @@ File: `src/components/Editor/extensions/underlineDecoration.ts`
 
 - **动机**：Windows 全屏截图 PNG 2-5MB，base64 内嵌使 markdown 源码超长。
 - **写入**（AtomicEditor.tsx paste handler）：uTools 环境（`utools.db.promises.postAttachment`
-  存在）→ `file.arrayBuffer()` → `postAttachment('img/<uuid>', buffer, file.type)` → 成功插入
+  存在）→ `file.arrayBuffer()` → **必须 `new Uint8Array(buffer)` 转换**（uTools 附件仅接受
+  Buffer | Uint8Array，传 ArrayBuffer 会被拒绝返回失败——08-15 实测误报"超 10M"）→
+  `postAttachment('img/<uuid>', bytes, file.type)` → 成功插入
   `![图片](utools-db://img/<uuid>)`（短引用，id = 附件文档 _id）；失败（10M 上限等）→
-  toast.error 不插入；浏览器环境降级 data URL。
+  toast 显示 `res.message` 真实原因；浏览器环境降级 data URL。
 - **渲染**（patch image-blocks.js ImageWidget.toDOM）：src 以 `utools-db://` 开头 →
   `utools.db.promises.getAttachment(id)` → Uint8Array/ArrayBuffer → `Blob` → `URL.createObjectURL`
   异步设置 img.src；非 uTools 环境不设 src（占位不崩）；常规路径/data URL 走原逻辑。
