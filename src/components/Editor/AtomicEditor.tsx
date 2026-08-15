@@ -355,9 +355,9 @@ const AtomicEditor = memo(
                 promises?: {
                   postAttachment?: (
                     id: string,
-                    data: ArrayBuffer,
+                    data: Uint8Array,
                     type: string,
-                  ) => Promise<{ ok: boolean; id?: string }>
+                  ) => Promise<{ ok: boolean; id?: string; message?: string }>
                 }
               }
             }
@@ -366,17 +366,19 @@ const AtomicEditor = memo(
         if (db) {
           file
             .arrayBuffer()
-            .then((buffer) =>
-              db(`img/${crypto.randomUUID()}`, buffer, file.type).then((res) => ({ res, buffer })),
-            )
+            .then((buffer) => {
+              // uTools 附件仅接受 Buffer | Uint8Array（ArrayBuffer 会被拒绝并返回失败）
+              const bytes = new Uint8Array(buffer)
+              return db(`img/${crypto.randomUUID()}`, bytes, file.type).then((res) => ({ res }))
+            })
             .then(({ res }) => {
               if (!res.ok) {
-                toast.error('图片保存失败（附件可能超过 10M 上限）')
+                toast.error(`图片保存失败：${res.message ?? '未知原因（附件可能超过 10M 上限）'}`)
                 return
               }
               insert(`![图片](utools-db://${res.id})`)
             })
-            .catch(() => toast.error('图片保存失败'))
+            .catch((err) => toast.error(`图片保存失败：${err?.message ?? String(err)}`))
           return
         }
         // 浏览器降级：data URL（与 pickImageFile 降级一致，避免 blob URL 内存驻留）
