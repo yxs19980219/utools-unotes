@@ -77,14 +77,17 @@
   --shadow-spread: 0px;
   --shadow-opacity: 0.08;
   --shadow-color: 0, 0%, 0%;
-  --shadow-2xs: 0px 4px 12px 0px hsl(0, 0%, 0% / 0.04);
-  --shadow-xs: 0px 4px 12px 0px hsl(0, 0%, 0% / 0.04);
-  --shadow-sm: 0px 4px 12px 0px hsl(0, 0%, 0% / 0.08), 0px 1px 2px -1px hsl(0, 0%, 0% / 0.08);
-  --shadow: 0px 4px 12px 0px hsl(0, 0%, 0% / 0.08), 0px 1px 2px -1px hsl(0, 0%, 0% / 0.08);
-  --shadow-md: 0px 4px 12px 0px hsl(0, 0%, 0% / 0.08), 0px 2px 4px -1px hsl(0, 0%, 0% / 0.08);
-  --shadow-lg: 0px 4px 12px 0px hsl(0, 0%, 0% / 0.08), 0px 4px 6px -1px hsl(0, 0%, 0% / 0.08);
-  --shadow-xl: 0px 4px 12px 0px hsl(0, 0%, 0% / 0.08), 0px 8px 10px -1px hsl(0, 0%, 0% / 0.08);
-  --shadow-2xl: 0px 4px 12px 0px hsl(0, 0%, 0% / 0.20);
+  --shadow-2xs: 0px 4px 12px 0px hsl(0 0% 0% / 0.04);
+  --shadow-xs: 0px 4px 12px 0px hsl(0 0% 0% / 0.04);
+  --shadow-sm: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 1px 2px -1px hsl(0 0% 0% / 0.08);
+  --shadow: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 1px 2px -1px hsl(0 0% 0% / 0.08);
+  --shadow-md: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 2px 4px -1px hsl(0 0% 0% / 0.08);
+  --shadow-lg: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 4px 6px -1px hsl(0 0% 0% / 0.08);
+  --shadow-xl: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 8px 10px -1px hsl(0 0% 0% / 0.08);
+  --shadow-2xl: 0px 4px 12px 0px hsl(0 0% 0% / 0.20);
+  /* 弹窗阴影（Tailwind shadow-* 工具类因 @theme inline 自引用失效，见 dialog.tsx；
+     此处双态定义，规避 Tailwind 变量名） */
+  --dialog-shadow: 0px 4px 12px 0px hsl(0 0% 0% / 0.08), 0px 4px 6px -1px hsl(0 0% 0% / 0.08);
   --tracking-normal: -0.01em;
   --spacing: 0.25rem;
 
@@ -183,14 +186,16 @@
   --shadow-spread: 0px;
   --shadow-opacity: 0.4;
   --shadow-color: 0, 0%, 0%;
-  --shadow-2xs: 0px 6px 20px 0px hsl(0, 0%, 0% / 0.20);
-  --shadow-xs: 0px 6px 20px 0px hsl(0, 0%, 0% / 0.20);
-  --shadow-sm: 0px 6px 20px 0px hsl(0, 0%, 0% / 0.40), 0px 1px 2px -1px hsl(0, 0%, 0% / 0.40);
-  --shadow: 0px 6px 20px 0px hsl(0, 0%, 0% / 0.40), 0px 1px 2px -1px hsl(0, 0%, 0% / 0.40);
-  --shadow-md: 0px 6px 20px 0px hsl(0, 0%, 0% / 0.40), 0px 2px 4px -1px hsl(0, 0%, 0% / 0.40);
-  --shadow-lg: 0px 6px 20px 0px hsl(0, 0%, 0% / 0.40), 0px 4px 6px -1px hsl(0, 0%, 0% / 0.40);
-  --shadow-xl: 0px 6px 20px 0px hsl(0, 0%, 0% / 0.40), 0px 8px 10px -1px hsl(0, 0%, 0% / 0.40);
-  --shadow-2xl: 0px 6px 20px 0px hsl(0, 0%, 0% / 1.00);
+  --shadow-2xs: 0px 6px 20px 0px hsl(0 0% 0% / 0.20);
+  --shadow-xs: 0px 6px 20px 0px hsl(0 0% 0% / 0.20);
+  --shadow-sm: 0px 6px 20px 0px hsl(0 0% 0% / 0.40), 0px 1px 2px -1px hsl(0 0% 0% / 0.40);
+  --shadow: 0px 6px 20px 0px hsl(0 0% 0% / 0.40), 0px 1px 2px -1px hsl(0 0% 0% / 0.40);
+  --shadow-md: 0px 6px 20px 0px hsl(0 0% 0% / 0.40), 0px 2px 4px -1px hsl(0 0% 0% / 0.40);
+  --shadow-lg: 0px 6px 20px 0px hsl(0 0% 0% / 0.40), 0px 4px 6px -1px hsl(0 0% 0% / 0.40);
+  --shadow-xl: 0px 6px 20px 0px hsl(0 0% 0% / 0.40), 0px 8px 10px -1px hsl(0 0% 0% / 0.40);
+  --shadow-2xl: 0px 6px 20px 0px hsl(0 0% 0% / 1.00);
+  /* 弹窗阴影（深色版更深） */
+  --dialog-shadow: 0px 6px 20px 0px hsl(0 0% 0% / 0.4), 0px 4px 6px -1px hsl(0 0% 0% / 0.4);
 
   /* 编辑器半透明语义色（深色版；rgba 值对应深色 --muted #2e2e2e / --accent #474747） */
   --editor-muted-35: rgba(46, 46, 46, 0.35);
